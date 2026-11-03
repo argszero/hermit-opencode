@@ -126,7 +126,12 @@ OpenCode's format, not hermit's internals, so they still hold here. The fourth
 and fifth cover the second manifest layout, which that request never had to.
 
 `python -c "import hermit"` in that venv raises `ModuleNotFoundError`. That is
-the zero-dependency claim, measured rather than asserted.
+the zero-dependency claim, measured rather than asserted — but run it from this
+repository's root or from a neutral directory, **not** from inside a hermit
+checkout: there a `hermit/` package directory sits in the current working
+directory and Python imports it without anything being installed. Measured both
+ways: `ModuleNotFoundError` from `/tmp`, and this package's only declared
+requirement is `PyYAML`.
 
 **2. A real conversion**, of hermit's own example adapter
 (`docs/_examples/file_adapter`) — `hermit-opencode <adapter> --output out`
