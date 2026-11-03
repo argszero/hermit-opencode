@@ -1,0 +1,15 @@
+hermit-opencode
+Copyright 2026 the hermit-opencode contributors
+
+This product contains code derived from the Hermit project
+(https://github.com/Infini-AI-Lab/hermit), Copyright the Hermit contributors,
+licensed under the Apache License, Version 2.0.
+
+Derived from hermit/plugins/opencode_plugin.py and hermit/plugins/common.py as
+submitted in Hermit pull request #39 (commit f1027bf), which was closed without
+being merged.
+
+Changes from the original: the code imports nothing from hermit; it reads both
+adapter manifest layouts Hermit has shipped; it runs as a standalone command
+rather than a `hermit convert --target`; and it writes a record that names this
+converter instead of a Hermit framework version.
