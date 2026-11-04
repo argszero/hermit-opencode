@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from hermit_opencode import AdapterError, Unsupported, build
+from hermit_opencode import SERVER_COMMAND, AdapterError, Unsupported, build
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "tests" / "assets" / "file_adapter"          # `contract: "2"`, `.hermit/adapter.yaml`
@@ -163,3 +163,26 @@ def test_emitted_config_validates_against_the_opencode_schema(tmp_path):
     build(EXAMPLE, out)
     schema = json.loads(schema_path.read_text())
     jsonschema.Draft202012Validator(schema).validate(json.loads((out / "opencode.json").read_text()))
+
+
+def test_the_served_command_and_the_readme_agree_on_which_hermit_can_run_it(tmp_path):
+    """The emitted `mcp` command and the README's Requirements table name the same minimum.
+
+    The gap this pins is silent in this repository and loud only in a user's
+    OpenCode session: hermit `hermit-harness 0.1.0` from PyPI reads `adapter.yaml`
+    at the adapter root, so it cannot open the embedded copy, and the emitted
+    server fails to start. Measured both ways in the README's Verification
+    section. If a later edit changes the served command or relaxes the
+    requirement, one of these assertions fails instead of the user finding out.
+    """
+    out = tmp_path / "pinned"
+    build(EXAMPLE, out)
+    config = json.loads((out / "opencode.json").read_text())
+    (command,) = [entry["command"] for entry in config["mcp"].values()]
+    assert command[:2] == [SERVER_COMMAND, "serve"]
+
+    readme = (ROOT / "README.md").read_text()
+    requirements = readme.split("### Requirements", 1)[1].split("\n## ", 1)[0]
+    assert " ".join(command[:2]) in readme, "the README must name the command it tells the user to install hermit for"
+    assert ".hermit/adapter.yaml" in requirements, "the Requirements table must name the layout a hermit needs"
+    assert "hermit-harness 0.1.0" in requirements, "the Requirements table must name the release that cannot serve it"

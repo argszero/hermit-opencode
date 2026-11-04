@@ -32,6 +32,32 @@ adapter files and writes configuration. The `hermit serve adapter` line is a
 *string* in the emitted JSON, run later by OpenCode — so install hermit
 separately, where OpenCode runs, and only if the adapter declares tools.
 
+### Requirements — which hermit, for which part
+
+Hermit itself is needed only for the **tool server**. Everything else in the
+output is plain files that OpenCode reads on its own.
+
+| Part of the output | Needs hermit? | Which hermit |
+|---|---|---|
+| `.opencode/context.md`, `.opencode/skills/`, `.opencode/agents/`, and `opencode.json`'s `instructions` | No | any — OpenCode reads these directly |
+| `opencode.json`'s `mcp.<server>`, the command `hermit serve` runs | **Yes** | a hermit that reads the `.hermit/adapter.yaml` + `exports.yaml` layout: git `main`, or any release **after 0.1.0** |
+
+**Hermit `hermit-harness 0.1.0` from PyPI — the only released version, uploaded
+2026-10-26 — cannot serve the embedded adapter.** Its manifest reader wants
+`adapter.yaml` at the adapter root, the layout hermit replaced in its own `#41`;
+both the embedded copy and the source adapter are the newer layout, so no path,
+flag or environment setting makes 0.1.0 serve this output. With 0.1.0 installed,
+the emitted `mcp` entry fails to start and OpenCode reports the server as
+unavailable; the context, skills and roles still work, because they never touch
+hermit.
+
+Measured, both readings in [Verification](#verification--what-was-actually-run)
+below. Install hermit with:
+
+```bash
+pip install "git+https://github.com/Infini-AI-Lab/hermit"   # reads the .hermit layout
+```
+
 ## Use
 
 ```bash
@@ -96,15 +122,16 @@ OpenCode wrote there is **not** generated, so it survives.
 
 ## Verification — what was actually run
 
-Everything below was run on macOS, Python 3.13.9, against hermit `f1027bf` and
-OpenCode's published schema. Re-runnable from the repository root:
+Everything below was run on macOS, Python 3.13.9 — items 1–4 against hermit
+`f1027bf` and OpenCode's published schema, item 5 against the released PyPI
+package and hermit `604ecf0`. Re-runnable from the repository root:
 
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[test]"
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-**1. The suite: 11 passed, no network, no hermit installed.**
+**1. The suite: 12 passed, no network, no hermit installed.**
 
 ```text
 tests/test_emit.py::test_opencode_carries_every_part PASSED
@@ -118,6 +145,7 @@ tests/test_emit.py::test_refuses_an_adapter_that_is_not_plugin_portable PASSED
 tests/test_emit.py::test_cli_emits_and_exits_zero PASSED
 tests/test_emit.py::test_cli_reports_a_bad_adapter_with_exit_2 PASSED
 tests/test_emit.py::test_emitted_config_validates_against_the_opencode_schema PASSED
+tests/test_emit.py::test_the_served_command_and_the_readme_agree_on_which_hermit_can_run_it PASSED
 ```
 
 The first three are ported from hermit pull request #39 (`f1027bf`), where they
@@ -167,6 +195,43 @@ and appended to the relative audit path:
 {"time": "…", "pid": …, "adapter": "file-example", "version": "1.0", "tool": "count_words",
  "arguments": {"text": "one two three"}, "status": "ok", "result": {"count": 3}}
 ```
+
+**5. The same command against the hermit a user can actually install — both
+readings.** Two clean virtualenvs, the same output directory, the same emitted
+`mcp` command run from the output directory with `cwd: "."`. The adapter
+converted was hermit's own `docs/_examples/file_adapter` at `604ecf0`.
+
+*Reading A — `pip install hermit-harness==0.1.0` from PyPI. It fails:*
+
+```text
+$ hermit serve adapter --audit-log .opencode/audit/tool-calls.jsonl
+EXIT CODE: 1
+  File ".../hermit/adapter/manifest.py", line 26, in read_manifest
+    raise ValueError(f"Missing {MANIFEST} in {root}")
+ValueError: Missing adapter.yaml in <output>/adapter
+```
+
+*Reading B — hermit from git `main` (measured at `604ecf0`). It works:*
+
+```text
+$ hermit serve adapter --audit-log .opencode/audit/tool-calls.jsonl
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{...},"protocolVersion":"2024-11-05",
+ "serverInfo":{"name":"file-example","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"count_words", ...}]}}
+EXIT CODE: 0
+```
+
+The difference is the manifest layout, not this converter: 0.1.0's reader looks
+for `adapter.yaml` at the adapter root, and the embedded adapter is the layout
+hermit moved to in its own `#41`. That is why the [Requirements](#requirements--which-hermit-for-which-part)
+table names a minimum, and why this repository's test suite pins the emitted
+command and that table to each other.
+
+`git+https://github.com/Infini-AI-Lab/hermit` was the intended spelling of
+reading B and its first attempt died at `fatal: unable to access …: Recv
+failure: Connection reset by peer`, so the same commit (`604ecf0`) was installed
+from a local clone of that repository. The code measured is that commit's,
+fetched over git; the route to it was local rather than the network.
 
 ### What was NOT verified
 
