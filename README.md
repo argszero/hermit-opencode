@@ -21,6 +21,22 @@ configuration is self-contained: copy it to another machine and nothing dangles.
 
 ## Install
 
+Install the wheel attached to the [latest
+release](https://github.com/argszero/hermit-opencode/releases):
+
+```bash
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.1.1/hermit_opencode-0.1.1-py3-none-any.whl
+```
+
+This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
+and no credential involved. It is verified in
+[Verification](#verification--what-was-actually-run) item 6 by installing from
+that exact URL into an empty virtualenv.
+
+From the repository, if you would rather track `main` — this needs `git` and a
+working connection to `github.com`, which is the failure this release exists to
+avoid:
+
 ```bash
 pip install git+https://github.com/argszero/hermit-opencode
 ```
@@ -57,6 +73,18 @@ below. Install hermit with:
 ```bash
 pip install "git+https://github.com/Infini-AI-Lab/hermit"   # reads the .hermit layout
 ```
+
+**Check which hermit you have — `pip show` cannot tell you.** Hermit has not
+bumped its version since the release, so `hermit-harness 0.1.0` from PyPI and
+git `main` both report `Version: 0.1.0`. The manifest reader is what differs:
+
+```bash
+python -c "from hermit.adapter import manifest; print(manifest.MANIFEST)"
+```
+
+`.hermit/adapter.yaml` → this output's tool server will start. `adapter.yaml` →
+you have the PyPI release, and the `mcp` entry will fail with `Missing
+adapter.yaml in <output>/adapter`.
 
 ## Use
 
