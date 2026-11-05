@@ -56,35 +56,43 @@ output is plain files that OpenCode reads on its own.
 | Part of the output | Needs hermit? | Which hermit |
 |---|---|---|
 | `.opencode/context.md`, `.opencode/skills/`, `.opencode/agents/`, and `opencode.json`'s `instructions` | No | any — OpenCode reads these directly |
-| `opencode.json`'s `mcp.<server>`, the command `hermit serve` runs | **Yes** | a hermit that reads the `.hermit/adapter.yaml` + `exports.yaml` layout: git `main`, or any release **after 0.1.0** |
+| `opencode.json`'s `mcp.<server>`, the command `hermit serve` runs | **Yes** | a hermit that reads the `.hermit/adapter.yaml` + `exports.yaml` layout: **`hermit-harness` 0.2.0 or later**, from PyPI |
 
-**Hermit `hermit-harness 0.1.0` from PyPI — the only released version, uploaded
-2026-10-26 — cannot serve the embedded adapter.** Its manifest reader wants
-`adapter.yaml` at the adapter root, the layout hermit replaced in its own `#41`;
-both the embedded copy and the source adapter are the newer layout, so no path,
-flag or environment setting makes 0.1.0 serve this output. With 0.1.0 installed,
-the emitted `mcp` entry fails to start and OpenCode reports the server as
-unavailable; the context, skills and roles still work, because they never touch
-hermit.
+**`hermit-harness 0.1.0` from PyPI cannot serve the embedded adapter, and 0.2.0
+is the release that changed that.** Upstream's
+[changelog](https://github.com/Infini-AI-Lab/hermit/blob/main/CHANGELOG.md) dates
+0.2.0 to 2026-11-04 and lists the adapter layout as a **breaking** change: the
+metadata moved into `.hermit/`, the exports moved into `exports.yaml` at the
+adapter root, and "Hermit no longer loads an adapter in the 0.1 layout
+(`adapter.yaml` at the root)". Both the embedded copy and the source adapter are
+the new layout, so no path, flag or environment setting makes 0.1.0 serve this
+output: with 0.1.0 installed the emitted `mcp` entry fails to start and OpenCode
+reports the server as unavailable. The context, skills and roles still work under
+0.1.0, because they never touch hermit.
 
-Measured, both readings in [Verification](#verification--what-was-actually-run)
+Both readings are measured in [Verification](#verification--what-was-actually-run)
 below. Install hermit with:
 
 ```bash
-pip install "git+https://github.com/Infini-AI-Lab/hermit"   # reads the .hermit layout
+pip install "hermit-harness>=0.2.0"
 ```
 
-**Check which hermit you have — `pip show` cannot tell you.** Hermit has not
-bumped its version since the release, so `hermit-harness 0.1.0` from PyPI and
-git `main` both report `Version: 0.1.0`. The manifest reader is what differs:
+Until 0.2.0 was published on 2026-11-04, the only hermit that could serve this
+output was git `main`, and earlier versions of this page said so. That advice is
+withdrawn: the release says the same thing, and it needs no `git` binary.
+
+**Check which hermit you have.** `pip show hermit-harness` now separates the two
+releases (`0.2.0` vs `0.1.0`), but the manifest reader is the mechanical check
+behind it, and it is the one that also covers a git checkout between the two
+releases, which still reports `Version: 0.1.0`:
 
 ```bash
 python -c "from hermit.adapter import manifest; print(manifest.MANIFEST)"
 ```
 
 `.hermit/adapter.yaml` → this output's tool server will start. `adapter.yaml` →
-you have the PyPI release, and the `mcp` entry will fail with `Missing
-adapter.yaml in <output>/adapter`.
+you have `0.1.0`, and the `mcp` entry will fail with `Missing adapter.yaml in
+<output>/adapter`.
 
 ## Use
 
@@ -123,12 +131,12 @@ serves.
 
 ### Both adapter manifest layouts
 
-Hermit changed its adapter layout in 0.1.0 and this tool reads both:
+Hermit changed its adapter layout on the way to 0.2.0, and this tool reads both:
 
 | Layout | Where the manifest is | `contract` |
 |---|---|---|
-| Hermit 0.1.0 and later | `.hermit/adapter.yaml` (metadata) beside `exports.yaml` (agents, skills, tools) | `"2"` |
-| Hermit 0.1 | one `adapter.yaml` at the adapter root, holding an `exports:` section | `"1"` |
+| 0.2.0 and later (and git `main` since hermit `#41`) | `.hermit/adapter.yaml` (metadata) beside `exports.yaml` (agents, skills, tools) | `"2"` |
+| 0.1 — the PyPI `0.1.0` release | one `adapter.yaml` at the adapter root, holding an `exports:` section | `"1"` |
 
 The report's `layout` field says which one was read (`1` or `2`). A directory
 with neither file is refused by name rather than half-converted.
@@ -225,9 +233,9 @@ and appended to the relative audit path:
 ```
 
 **5. The same command against the hermit a user can actually install — both
-readings.** Two clean virtualenvs, the same output directory, the same emitted
+readings.** Three clean virtualenvs, the same output directory, the same emitted
 `mcp` command run from the output directory with `cwd: "."`. The adapter
-converted was hermit's own `docs/_examples/file_adapter` at `604ecf0`.
+converted was hermit's own `docs/_examples/file_adapter`.
 
 *Reading A — `pip install hermit-harness==0.1.0` from PyPI. It fails:*
 
@@ -249,17 +257,65 @@ $ hermit serve adapter --audit-log .opencode/audit/tool-calls.jsonl
 EXIT CODE: 0
 ```
 
+*Reading C — `pip install hermit-harness==0.2.0` from PyPI, the release of
+2026-11-04. It works, and this is the reading the Requirements table names:*
+
+```text
+$ hermit serve adapter --audit-log .opencode/audit/tool-calls.jsonl
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"experimental":{},"tools":{"listChanged":false}},
+ "protocolVersion":"2024-11-05","serverInfo":{"name":"file-example","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"description":"Count whitespace-separated words in text.",
+ ...,"name":"count_words", ...}]}}
+EXIT CODE: 0
+$ cat .opencode/audit/tool-calls.jsonl
+{"time": "2026-11-05T18:40:08.988714+00:00", "adapter": "file-example", "version": "1.0",
+ "tool": "count_words", "arguments": {"text": "one two three"}, "status": "ok", "result": {"count": 3}}
+```
+
 The difference is the manifest layout, not this converter: 0.1.0's reader looks
 for `adapter.yaml` at the adapter root, and the embedded adapter is the layout
-hermit moved to in its own `#41`. That is why the [Requirements](#requirements--which-hermit-for-which-part)
+hermit moved to in its own `#41` — the change it then released, as breaking, in
+0.2.0. That is why the [Requirements](#requirements--which-hermit-for-which-part)
 table names a minimum, and why this repository's test suite pins the emitted
 command and that table to each other.
 
-`git+https://github.com/Infini-AI-Lab/hermit` was the intended spelling of
-reading B and its first attempt died at `fatal: unable to access …: Recv
-failure: Connection reset by peer`, so the same commit (`604ecf0`) was installed
-from a local clone of that repository. The code measured is that commit's,
-fetched over git; the route to it was local rather than the network.
+Reading B is kept as the record of how the requirement was established while
+0.2.0 did not exist yet: `git+https://github.com/Infini-AI-Lab/hermit` was its
+intended spelling and the first attempt died at `fatal: unable to access …: Recv
+failure: Connection reset by peer`, so commit `604ecf0` was installed from a
+local clone. Reading C is the one to act on, and it needs neither `git` nor a
+checkout.
+
+**One caveat on how these were measured.** This machine exports a global
+`PYTHONPATH`, and an earlier pass at readings A and B silently imported hermit's
+own declared dependencies (PyYAML, `typing_extensions`) from that variable
+instead of from the virtualenv. Reading C was re-measured with the variable
+cleared and every dependency installed into the venv, and it is the reading the
+recommendation rests on.
+
+**6. The install command at the top of this page, from a clean virtualenv.**
+
+```text
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.1.1/hermit_opencode-0.1.1-py3-none-any.whl
+Installing collected packages: PyYAML, hermit-opencode
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.1.1
+$ hermit-opencode docs/_examples/file_adapter --output out/
+  ... "omitted": [], "record": "hermit-opencode.json" }
+EXIT CODE: 0
+```
+
+`PyYAML 6.0.3` there is a dependency actually fetched from PyPI, not one
+inherited from the host — the install ran with `PYTHONPATH` cleared, for the
+reason the caveat in item 5 gives. The wheel served from that URL hashes
+identically to the one built here
+(`sha256 1ed6b22de17575346ee3239895f9b71600008d6e4070b498840939297a11c742`), so
+the release asset and this repository's source agree.
+
+The output of that install is what reading C served. The whole chain — download
+the wheel from the release URL, convert the example adapter, `hermit serve
+adapter` under `hermit-harness 0.2.0` from PyPI, `count_words` answering, the
+audit log appended — was measured end to end with no `git` binary and no local
+checkout anywhere in it.
 
 ### What was NOT verified
 

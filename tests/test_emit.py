@@ -171,9 +171,10 @@ def test_the_served_command_and_the_readme_agree_on_which_hermit_can_run_it(tmp_
     The gap this pins is silent in this repository and loud only in a user's
     OpenCode session: hermit `hermit-harness 0.1.0` from PyPI reads `adapter.yaml`
     at the adapter root, so it cannot open the embedded copy, and the emitted
-    server fails to start. Measured both ways in the README's Verification
-    section. If a later edit changes the served command or relaxes the
-    requirement, one of these assertions fails instead of the user finding out.
+    server fails to start; `hermit-harness 0.2.0` reads `.hermit/adapter.yaml`
+    and serves it. Both measured in the README's Verification section. If a later
+    edit changes the served command or relaxes the requirement, one of these
+    assertions fails instead of the user finding out.
     """
     out = tmp_path / "pinned"
     build(EXAMPLE, out)
@@ -186,3 +187,7 @@ def test_the_served_command_and_the_readme_agree_on_which_hermit_can_run_it(tmp_
     assert " ".join(command[:2]) in readme, "the README must name the command it tells the user to install hermit for"
     assert ".hermit/adapter.yaml" in requirements, "the Requirements table must name the layout a hermit needs"
     assert "hermit-harness 0.1.0" in requirements, "the Requirements table must name the release that cannot serve it"
+    assert "0.2.0" in requirements, "the Requirements table must name the release that can serve it"
+    assert "git+https://github.com/Infini-AI-Lab/hermit" not in requirements, (
+        "installing hermit from git is no longer needed: `hermit-harness 0.2.0` reads the embedded layout"
+    )
