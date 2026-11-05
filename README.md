@@ -232,7 +232,7 @@ and appended to the relative audit path:
  "arguments": {"text": "one two three"}, "status": "ok", "result": {"count": 3}}
 ```
 
-**5. The same command against the hermit a user can actually install — both
+**5. The same command against the hermit a user can actually install — three
 readings.** Three clean virtualenvs, the same output directory, the same emitted
 `mcp` command run from the output directory with `cwd: "."`. The adapter
 converted was hermit's own `docs/_examples/file_adapter`.
