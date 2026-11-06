@@ -1,7 +1,8 @@
 # hermit-opencode
 
-Convert a [hermit](https://github.com/Infini-AI-Lab/hermit) adapter into an
-[OpenCode](https://opencode.ai) configuration.
+Bring a [hermit](https://github.com/Infini-AI-Lab/hermit) adapter to
+[OpenCode](https://opencode.ai): `convert` writes an OpenCode configuration into
+a directory of its own, `deploy` writes it into a project you already have.
 
 A hermit adapter is a directory of files: `ADAPTER.md` (the acting agent's
 context), `exports.yaml` (skills, subagents, tools), `.hermit/adapter.yaml` (the
@@ -16,8 +17,11 @@ four parts arrive in OpenCode's own places:
 | `exports.yaml` → `skills` | `.opencode/skills/<name>/SKILL.md` | OpenCode discovers skills from that directory |
 | `exports.yaml` → `agents` | `.opencode/agents/<name>.md`, frontmatter `mode: subagent` | the file name **is** the agent's name in OpenCode |
 
-The adapter itself is copied to `adapter/` inside the output, so the emitted
-configuration is self-contained: copy it to another machine and nothing dangles.
+The adapter itself is copied in with the output, so the emitted configuration is
+self-contained: copy it to another machine and nothing dangles. `convert` puts
+that copy at `adapter/` in its own output directory; [`deploy`](#deploy-into-a-workspace)
+puts it at `.opencode/adapter/` inside your project, where a directory named
+`adapter/` may already be yours.
 
 ## Install
 
@@ -25,7 +29,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.1.1/hermit_opencode-0.1.1-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.0/hermit_opencode-0.2.0-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -155,6 +159,68 @@ under `omitted`.
 Re-running into the same output replaces only what it generated, so an adapter
 that loses a skill or a role loses it in the output too — and the tool-call log
 OpenCode wrote there is **not** generated, so it survives.
+
+## Deploy into a workspace
+
+`convert` writes a configuration you then copy into a project. `deploy` writes it
+into the project itself, in one step:
+
+```bash
+hermit-opencode deploy path/to/adapter --workspace /path/to/your/project
+```
+
+**Run it first in a fresh directory, or in a tree under version control.** It
+writes into a project that is not its own, so the first run in anything you care
+about should be one you can undo with `git checkout`. This is the one place where
+a mistake costs files rather than an afternoon.
+
+It writes the same four parts — `.opencode/context.md` and its `instructions`
+entry, `.opencode/skills/`, `.opencode/agents/`, and `opencode.json`'s `mcp`
+entry — plus `.opencode/adapter/` (its copy of the adapter) and
+`.opencode/hermit-opencode.json` (its record, and the marker that makes the
+workspace its own). Then `cd` there and run `opencode`.
+
+**It merges `opencode.json`; it never replaces it.** Your other keys, your own
+`instructions` entries and your other MCP servers stay, and its own entry is
+added or updated in place. A second `deploy` of the same adapter changes nothing
+it generated, and still leaves everything of yours alone — the audit log at
+`.opencode/audit/tool-calls.jsonl` included.
+
+**It refuses a workspace it did not create**, because almost every mistake here
+is writing into somebody's project by surprise:
+
+```text
+error: Refusing to deploy into a nonempty workspace this tool did not create. Pass
+--force to adopt it: this writes only the files it generates and leaves everything
+else alone.
+```
+
+`--force` is the way to adopt a project you already have, and it reports what it
+overwrote, so an adoption is never silent:
+
+```json
+"adopted": ["opencode.json"]
+```
+
+Two refusals hold even with `--force`, because merging is the only thing this tool
+does to your files and both mean it cannot merge: an `opencode.json` that is not
+valid JSON, and one whose `instructions` or `mcp` key holds the wrong type. It
+stops and says which, rather than overwriting a file it could not read.
+
+### What deploy does not do
+
+Named here rather than half-built. Each is a feature of hermit's own `deploy`, and
+none of them is implied by the four parts above:
+
+- **It never deletes anything.** A role or skill an earlier deploy wrote, and the
+  adapter no longer declares, stays where it is. Remove it yourself.
+- **No managed block in `AGENTS.md`.** The context travels as `.opencode/context.md`
+  through `instructions`, which OpenCode combines with your `AGENTS.md` — so your
+  file is never edited and never needs merging.
+- **No lifecycle `hooks`** — refused, as `convert` refuses them, unless you pass
+  `--allow-lossy`, in which case they are listed under `omitted`.
+- **No container isolation and no per-task `context_tool`** — those belong to
+  hermit's session machinery, not to a host configuration.
 
 ## Verification — what was actually run
 
@@ -293,39 +359,89 @@ instead of from the virtualenv. Reading C was re-measured with the variable
 cleared and every dependency installed into the venv, and it is the reading the
 recommendation rests on.
 
-**6. The install command at the top of this page, from a clean virtualenv.**
+**6. The install command at the top of this page, from a clean virtualenv — both
+commands.**
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.1.1/hermit_opencode-0.1.1-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.0/hermit_opencode-0.2.0-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.1.1
-$ hermit-opencode docs/_examples/file_adapter --output out/
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.0
+$ hermit-opencode convert docs/_examples/file_adapter --output out/
   ... "omitted": [], "record": "hermit-opencode.json" }
+EXIT CODE: 0
+$ hermit-opencode deploy docs/_examples/file_adapter --workspace ws/
+  ... "adapter_dir": ".opencode/adapter", "record": ".opencode/hermit-opencode.json" }
 EXIT CODE: 0
 ```
 
 `PyYAML 6.0.3` there is a dependency actually fetched from PyPI, not one
-inherited from the host — the install ran with `PYTHONPATH` cleared, for the
-reason the caveat in item 5 gives. The wheel served from that URL hashes
-identically to the one built here
-(`sha256 1ed6b22de17575346ee3239895f9b71600008d6e4070b498840939297a11c742`), so
-the release asset and this repository's source agree.
+inherited from the host — this whole series runs with `PYTHONPATH` cleared, for
+the reason the caveat in item 5 gives. The asset served from that URL hashes
+identically to the one built here; the release notes carry the `sha256` of both
+attached files, because a hash written into a file that the wheel itself contains
+would change the very hash it states.
 
-The output of that install is what reading C served. The whole chain — download
-the wheel from the release URL, convert the example adapter, `hermit serve
-adapter` under `hermit-harness 0.2.0` from PyPI, `count_words` answering, the
-audit log appended — was measured end to end with no `git` binary and no local
-checkout anywhere in it.
+The output of that install is what readings C and 7 served. The whole chain —
+download the wheel from the release URL, convert the example adapter, serve it
+under `hermit-harness 0.2.0` from PyPI, `count_words` answering, the audit log
+appended — was measured end to end with no `git` binary and no local checkout
+anywhere in it. `deploy` was then measured through the same three steps.
+
+**7. `deploy`, into a workspace that already had its own files.**
+
+A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
+the 0.2.0 build under test:
+
+```text
+$ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
+  "adapter_dir": ".opencode/adapter", "adopted": [], "server_name": "file_example",
+  "tools": ["count_words"], "record": ".opencode/hermit-opencode.json"
+```
+
+`adopted` was empty because that project had no `opencode.json` to merge into;
+the case that reports something is in the suite, where an `opencode.json` with a
+`theme` key, its own `instructions` entry and a second MCP server survives the
+merge with all three intact. `main.py` and `AGENTS.md` were byte-identical
+afterwards — `AGENTS.md` because the context travels as `.opencode/context.md`
+instead.
+
+Then the command that deploy emitted, run **from the workspace**, with `cwd: "."`
+and `PYTHONPATH` cleared, under `hermit-harness 0.2.0` from PyPI:
+
+```text
+$ hermit serve .opencode/adapter --audit-log .opencode/audit/tool-calls.jsonl
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{...},"protocolVersion":"2024-11-05",
+ "serverInfo":{"name":"file-example","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"count_words", ...}]}}
+EXIT CODE: 0
+$ cat .opencode/audit/tool-calls.jsonl
+{"time": "2026-11-06T06:46:50.480999+00:00", "adapter": "file-example", "version": "1.0",
+ "tool": "count_words", "arguments": {"text": "one two three"}, "status": "ok", "result": {"count": 3}}
+```
+
+The audit log is the independent proof the call ran: it was written inside the
+workspace, at the path the emitted entry names.
+
+The suite covers what a single run cannot show: a second deploy is byte-identical
+and leaves a user file, a user skill and the audit log untouched; a workspace the
+tool did not create is refused with nothing written; `--force` adopts and reports;
+and an `opencode.json` it cannot merge into stops it rather than being replaced.
 
 ### What was NOT verified
 
-**No live OpenCode session has ever loaded this output.** There were no OpenCode
-credentials or model backend available while this was built, so the end-to-end
-path stops at the MCP server: the configuration is schema-valid and its server
-command works, but "OpenCode actually started, read `.opencode/`, and used the
-skill and subagent" is **unproven**. A schema-valid configuration is not a loaded
-one. If you run it and something is wrong, that is exactly the report this
-repository wants.
+**No live OpenCode session has ever loaded this output — `convert`'s or
+`deploy`'s.** There were no OpenCode credentials or model backend available while
+this was built, so the end-to-end path stops at the MCP server: the configuration
+is schema-valid and its server command works, but "OpenCode actually started, read
+`.opencode/`, and used the skill and subagent" is **unproven**. A schema-valid
+configuration is not a loaded one. If you run it and something is wrong, that is
+exactly the report this repository wants.
+
+**`deploy` deserves that caveat more than `convert` does**, because it writes into
+a project you already have rather than into an empty directory of its own. So:
+run it first in a fresh directory, or in a tree under version control, and treat
+the guards above as the only promises — they bound what it writes, not what a
+host does with it afterwards.
 
 Also unverified, for the same reason: whether OpenCode's tool-name handling
 rewrites `file_example` into its own naming scheme, and how it renders a
@@ -340,6 +456,11 @@ additional backend, in two halves: running tasks against an adapter
 (`convert`), and deploying a trained adapter into a workspace (`deploy`). This
 package is the first half, as a standalone tool.
 
+Both halves now exist as commands of this package. `convert` is the first,
+`deploy` the second, and `deploy` writes into a workspace the way hermit's own
+`deploy` does for its four hosts — using OpenCode's own places rather than a
+managed block in `AGENTS.md`.
+
 Hermit cannot host this itself: `hermit/plugins/__init__.py` is a hardcoded map
 of four emitters with no entry points or registration hook, so a fifth host
 cannot be added without changing hermit's core. A converter for a host hermit
@@ -349,9 +470,14 @@ is.
 The code descends from pull request #39, which was closed without being merged;
 see `NOTICE` for what was derived and what changed.
 
-The second half — writing into a *workspace* rather than emitting a
-configuration — is not implemented here. Hermit pull request #42 proposes it;
-this package does not duplicate it.
+Hermit pull request #42 proposes the same deploy route *inside hermit's core*
+(`hermit/hosts/opencode.py`, `--host opencode`), and it was open and conflicting
+when this was written. This package does not touch hermit's tree, so the two do
+not compete for a merge: if that route lands upstream, this one remains the way to
+reach OpenCode without changing hermit. What the two must not do is write the same
+workspace — the collision is measured and written up in
+[Relation to #42](https://github.com/Infini-AI-Lab/hermit/pull/39), where
+`opencode.json` is written wholesale by both and the second writer silently wins.
 
 ## License
 

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from hermit_opencode import SERVER_COMMAND, AdapterError, Unsupported, build
+from hermit_opencode import SERVER_COMMAND, AdapterError, Unsupported, build, deploy
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "tests" / "assets" / "file_adapter"          # `contract: "2"`, `.hermit/adapter.yaml`
@@ -190,4 +190,35 @@ def test_the_served_command_and_the_readme_agree_on_which_hermit_can_run_it(tmp_
     assert "0.2.0" in requirements, "the Requirements table must name the release that can serve it"
     assert "git+https://github.com/Infini-AI-Lab/hermit" not in requirements, (
         "installing hermit from git is no longer needed: `hermit-harness 0.2.0` reads the embedded layout"
+    )
+
+
+def test_the_workspace_command_and_the_readme_agree_on_what_deploy_writes(tmp_path):
+    """`deploy`'s emitted entry, and the README's account of it, name the same paths.
+
+    The failure this pins is a deployment whose server command points somewhere the
+    README does not describe — silent in this repository, and loud only in a user's
+    workspace. It also pins the limits: they are what a reader decides on, so a later
+    edit may not quietly drop them.
+    """
+    workspace = tmp_path / "ws"
+    result = deploy(EXAMPLE, workspace)
+    config = json.loads((workspace / "opencode.json").read_text())
+    (command,) = [entry["command"] for entry in config["mcp"].values()]
+    assert command[:2] == [SERVER_COMMAND, "serve"]
+    assert command[2] == ".opencode/adapter"
+    assert config["mcp"][result["server_name"]]["cwd"] == "."
+
+    readme = (ROOT / "README.md").read_text()
+    deployed = readme.split("## Deploy into a workspace", 1)[1].split("\n## ", 1)[0]
+    assert "hermit-opencode deploy" in deployed, "the README must name the deploy command"
+    assert ".opencode/adapter/" in deployed, "the README must name where deploy puts the adapter copy"
+    assert "--force" in deployed, "the README must say how to adopt a project you already have"
+    assert "It never deletes anything." in deployed, "the README must state that deploy never deletes"
+    assert "under version control" in deployed, "the README must tell the reader to deploy somewhere undoable"
+    # The caveat is louder for deploy than for convert, and stays that way.
+    caution = readme.split("### What was NOT verified", 1)[1]
+    assert "No live OpenCode session has ever loaded this output" in caution
+    assert "deserves that caveat more than" in caution, (
+        "deploy writes into a user's real project: the unverified note must say so"
     )
