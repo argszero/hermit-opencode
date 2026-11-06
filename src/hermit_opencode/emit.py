@@ -14,9 +14,13 @@ it is opened in, and that carries every part of an adapter:
   frontmatter makes it a subagent (`mode: subagent`).
 
 OpenCode expands no plugin-root variable, so the tool entry may not name an absolute
-path: it runs the server from the workspace (`cwd`) and names the embedded adapter
-from there, which is the layout this emitter writes at the project root. The audit
-log lives under `.opencode/audit/`, outside the adapter.
+path: it names the embedded adapter relative to the project root, and OpenCode starts
+the server there. The audit log lives under `.opencode/audit/`, outside the adapter.
+
+No `cwd` key is emitted, deliberately. OpenCode 1.1.2's own validator rejects it
+(`Unrecognized key: "cwd"`) and refuses the entire configuration with it, even
+though the JSON schema opencode.ai publishes still documents the key. Without it the
+server starts in the project directory, which is what the entry needs.
 
 This module imports nothing from hermit. The tool server is a string in the emitted
 JSON (`hermit serve adapter`), run later by OpenCode, so the converter needs no
@@ -302,7 +306,7 @@ def build(adapter: Path, output: Path, *, allow_lossy: bool = False) -> dict:
         config["mcp"] = {bundle.server: {
             "type": "local",
             "command": [SERVER_COMMAND, "serve", ADAPTER_DIR, "--audit-log", f"{AUDIT_DIR}/{AUDIT_LOG}"],
-            "cwd": ".", "enabled": True}}
+            "enabled": True}}  # no `cwd`: opencode 1.1.2 rejects the key, see the docstring
     write_json(output / CONFIG, config)
 
     skills = copy_skills(bundle, output / DIR / "skills")

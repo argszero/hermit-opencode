@@ -138,7 +138,7 @@ def deploy(adapter: Path, workspace: Path, *, allow_lossy: bool = False, force: 
     if bundle.tools:
         server = {"type": "local",
                   "command": [SERVER_COMMAND, "serve", WORKSPACE_ADAPTER, "--audit-log", f"{AUDIT_DIR}/{AUDIT_LOG}"],
-                  "cwd": ".", "enabled": True}
+                  "enabled": True}
     instructions = [CONTEXT] if bundle.has_context else []
     config = _merge(existing, instructions=instructions, server=server, server_name=server_name)
 

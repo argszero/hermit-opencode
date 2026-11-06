@@ -41,7 +41,8 @@ def test_deploy_writes_the_four_parts_in_place(tmp_path):
     assert not (workspace / "AGENTS.md").exists(), "deploy must never write the project's own AGENTS.md"
     # Tools: run from the workspace, naming the adapter this deploy copied in.
     server = config["mcp"]["file_example"]
-    assert server["cwd"] == "." and server["type"] == "local"
+    assert server["type"] == "local" and "cwd" not in server, (
+        "opencode 1.1.2 rejects a `cwd` key and refuses the whole configuration with it")
     assert server["command"] == ["hermit", "serve", ".opencode/adapter",
                                 "--audit-log", ".opencode/audit/tool-calls.jsonl"]
     assert str(workspace) not in json.dumps(config), "no absolute path: the workspace must stay copyable"
@@ -84,7 +85,7 @@ def test_force_adopts_a_project_and_says_what_it_overwrote(tmp_path):
     assert config["theme"] == "tokyonight"
     assert config["instructions"] == ["docs/rules.md", ".opencode/context.md"]
     assert config["mcp"]["other_server"]["command"] == ["other"]
-    assert config["mcp"]["file_example"]["cwd"] == "."
+    assert config["mcp"]["file_example"]["enabled"] is True
     # ...and their own files are untouched.
     assert (workspace / "main.py").read_text() == "print('mine')\n"
     # The report names exactly what was already there, so an adoption is never silent.

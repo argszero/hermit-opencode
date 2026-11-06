@@ -29,7 +29,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.0/hermit_opencode-0.2.0-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.1/hermit_opencode-0.2.1-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -124,10 +124,13 @@ cp -R out/. /path/to/your/project/
 cd /path/to/your/project && opencode
 ```
 
-**`cwd` is `.` and every path in `opencode.json` is workspace-relative, on
-purpose.** OpenCode expands no plugin-root variable, so a configuration that
-named this machine's absolute paths would break the moment it was copied
-anywhere else. This is the one constraint that shapes the whole output.
+**Every path in `opencode.json` is workspace-relative, on purpose.** OpenCode
+expands no plugin-root variable, so a configuration that named this machine's
+absolute paths would break the moment it was copied anywhere else. This is the
+one constraint that shapes the whole output. The `mcp` entry also carries no
+`cwd`, for a reason of its own: `opencode 1.1.2` rejects that key and refuses
+the whole configuration with it, as [item 8](#verification--what-was-actually-run)
+records.
 
 The audit log lives at `.opencode/audit/tool-calls.jsonl`, outside `adapter/`,
 because a hermit `Session` requires the audit log to sit outside the adapter it
@@ -283,7 +286,7 @@ keys `['$schema', 'instructions', 'mcp']`.
 
 **4. The command in the emitted `opencode.json` was run.** Started from the
 output directory exactly as the config spells it — `hermit serve adapter
---audit-log .opencode/audit/tool-calls.jsonl`, `cwd: "."` — the server answered
+--audit-log .opencode/audit/tool-calls.jsonl` — the server answered
 a real MCP `initialize` / `tools/list` / `tools/call` exchange:
 
 ```text
@@ -300,7 +303,7 @@ and appended to the relative audit path:
 
 **5. The same command against the hermit a user can actually install — three
 readings.** Three clean virtualenvs, the same output directory, the same emitted
-`mcp` command run from the output directory with `cwd: "."`. The adapter
+`mcp` command run from the output directory. The adapter
 converted was hermit's own `docs/_examples/file_adapter`.
 
 *Reading A — `pip install hermit-harness==0.1.0` from PyPI. It fails:*
@@ -363,9 +366,9 @@ recommendation rests on.
 commands.**
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.0/hermit_opencode-0.2.0-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.1/hermit_opencode-0.2.1-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.0
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.1
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
   ... "omitted": [], "record": "hermit-opencode.json" }
 EXIT CODE: 0
@@ -390,7 +393,7 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.0 build under test:
+the 0.2.1 build under test:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
@@ -405,8 +408,8 @@ merge with all three intact. `main.py` and `AGENTS.md` were byte-identical
 afterwards — `AGENTS.md` because the context travels as `.opencode/context.md`
 instead.
 
-Then the command that deploy emitted, run **from the workspace**, with `cwd: "."`
-and `PYTHONPATH` cleared, under `hermit-harness 0.2.0` from PyPI:
+Then the command that deploy emitted, run **from the workspace**, with
+`PYTHONPATH` cleared, under `hermit-harness 0.2.0` from PyPI:
 
 ```text
 $ hermit serve .opencode/adapter --audit-log .opencode/audit/tool-calls.jsonl
@@ -427,27 +430,91 @@ and leaves a user file, a user skill and the audit log untouched; a workspace th
 tool did not create is refused with nothing written; `--force` adopts and reports;
 and an `opencode.json` it cannot merge into stops it rather than being replaced.
 
+**8. `opencode 1.1.2` loads a deployed workspace — and does not load it by
+accident.** Items 1–7 prove the configuration is well-formed; none of them proves a
+host reads it. This one does, and its first result was a failure, which is the
+finding:
+
+```text
+$ opencode --version
+1.1.2
+$ opencode agent list                      # in a workspace deployed by 0.2.0
+Error: Configuration is invalid at …/ws/opencode.json
+↳ Invalid input mcp.file_example
+EXIT CODE: 1
+```
+
+`--print-logs --log-level DEBUG` named the cause — the `cwd` key in the `mcp` entry:
+
+```text
+issues=[{"code":"invalid_union","errors":[[{"code":"unrecognized_keys",
+ "keys":["cwd"],"message":"Unrecognized key: \"cwd\""}], …]}]
+```
+
+**A schema check could not have caught this.** OpenCode's *published* JSON schema
+still documents `cwd` for a local MCP server, and the copy committed under
+`tests/assets/` validates a configuration carrying it; the validator built into
+1.1.2 is narrower than the schema the same project publishes. `0.2.0` shipped that
+key, so a user of `0.2.0` had a configuration their OpenCode refused to start with.
+`0.2.1` emits the entry without it, and the suite pins the keys it may carry.
+
+With the key gone — the same CLI, the same workspace, nothing else changed:
+
+```text
+$ opencode agent list
+build (primary)
+compaction (primary)
+explore (subagent)
+general (subagent)
+plan (primary)
+summary (primary)
+title (primary)
+reviewer (subagent)
+EXIT CODE: 0
+```
+
+Exit 0, and no configuration warning. `reviewer` is the subagent `exports.yaml`
+declares, discovered from `.opencode/agents/reviewer.md`.
+
+**The negative reading that makes the positive one evidence.** The same command, in
+an empty directory with no `opencode.json` and no `.opencode/`:
+
+```text
+$ opencode agent list
+build (primary)
+compaction (primary)
+explore (subagent)
+general (subagent)
+plan (primary)
+summary (primary)
+title (primary)
+EXIT CODE: 0
+```
+
+Seven built-ins and no `reviewer`. The eighth line is therefore read from the
+deployed files, not built into the CLI — which is the difference between "the
+format looks right" and "the host read what we wrote".
+
 ### What was NOT verified
 
-**No live OpenCode session has ever loaded this output — `convert`'s or
-`deploy`'s.** There were no OpenCode credentials or model backend available while
-this was built, so the end-to-end path stops at the MCP server: the configuration
-is schema-valid and its server command works, but "OpenCode actually started, read
-`.opencode/`, and used the skill and subagent" is **unproven**. A schema-valid
-configuration is not a loaded one. If you run it and something is wrong, that is
-exactly the report this repository wants.
+**A model-driven session using these parts.** `opencode 1.1.2` reads the output —
+the configuration parses and the adapter's subagent is discovered by
+`opencode agent list` (item 8) — but no
+provider credentials exist on the machine this was measured on, so nothing here
+shows a model answering while calling the adapter's tool. That is the whole of the
+remainder, and it is one sentence rather than a disclaimer about the format.
+`opencode run` and `opencode auth login` are the two commands that would close it,
+and both need a provider account.
 
-**`deploy` deserves that caveat more than `convert` does**, because it writes into
-a project you already have rather than into an empty directory of its own. So:
-run it first in a fresh directory, or in a tree under version control, and treat
-the guards above as the only promises — they bound what it writes, not what a
-host does with it afterwards.
+Also unmeasured for that reason: whether OpenCode's tool-name handling rewrites
+`file_example` into its own naming scheme in a session, and how it renders a
+`description` containing non-ASCII text (emitted as a JSON string inside YAML
+frontmatter — valid, still worth eyeballing).
 
-Also unverified, for the same reason: whether OpenCode's tool-name handling
-rewrites `file_example` into its own naming scheme, and how it renders a
-`description` containing non-ASCII text (it is emitted as a JSON string inside
-YAML frontmatter, which is valid but worth eyeballing in a live session).
-
+**`deploy` writes into a project you already have**, rather than into an empty
+directory of its own. Run it first in a fresh directory, or in a tree under version
+control, and treat the guards above as the only promises — they bound what it
+writes, not what a host does with it afterwards.
 ## Relation to hermit's own OpenCode work
 
 Hermit's issue

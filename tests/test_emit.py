@@ -46,7 +46,9 @@ def test_opencode_carries_every_part(tmp_path):
         "Review the task requirements before acting. Check the result before returning it.\n")
     # Tools: a local MCP server run from the workspace, so the config names no path from this machine.
     server = config["mcp"]["file_example"]
-    assert server["type"] == "local" and server["cwd"] == "." and server["enabled"] is True
+    assert server["type"] == "local" and server["enabled"] is True
+    # No `cwd`: opencode 1.1.2 rejects the key and refuses the configuration with it.
+    assert set(server) == {"type", "command", "enabled"}
     assert server["command"] == ["hermit", "serve", "adapter", "--audit-log", ".opencode/audit/tool-calls.jsonl"]
     assert str(out) not in json.dumps(config)
     # Roles: the file name is the agent's name, and the frontmatter makes it a subagent.
@@ -207,7 +209,7 @@ def test_the_workspace_command_and_the_readme_agree_on_what_deploy_writes(tmp_pa
     (command,) = [entry["command"] for entry in config["mcp"].values()]
     assert command[:2] == [SERVER_COMMAND, "serve"]
     assert command[2] == ".opencode/adapter"
-    assert config["mcp"][result["server_name"]]["cwd"] == "."
+    assert set(config["mcp"][result["server_name"]]) == {"type", "command", "enabled"}
 
     readme = (ROOT / "README.md").read_text()
     deployed = readme.split("## Deploy into a workspace", 1)[1].split("\n## ", 1)[0]
@@ -216,9 +218,39 @@ def test_the_workspace_command_and_the_readme_agree_on_what_deploy_writes(tmp_pa
     assert "--force" in deployed, "the README must say how to adopt a project you already have"
     assert "It never deletes anything." in deployed, "the README must state that deploy never deletes"
     assert "under version control" in deployed, "the README must tell the reader to deploy somewhere undoable"
-    # The caveat is louder for deploy than for convert, and stays that way.
+    # The load check is what the remaining caveat rests on, and it is pinned too.
     caution = readme.split("### What was NOT verified", 1)[1]
-    assert "No live OpenCode session has ever loaded this output" in caution
-    assert "deserves that caveat more than" in caution, (
-        "deploy writes into a user's real project: the unverified note must say so"
+    assert "1.1.2" in caution, "the note must name the OpenCode version the load check ran on"
+    assert "opencode agent list" in caution, "the note must name the command that showed discovery"
+    assert "writes into a project you already have" in caution, (
+        "deploy writes into a user's real project: the remaining note must say so"
     )
+
+
+def test_the_output_is_something_opencode_actually_loads(tmp_path):
+    """The `mcp` entry carries only keys `opencode 1.1.2` accepts, and the README says so.
+
+    Measured 2026-11-07 against `opencode 1.1.2`. `opencode agent list` in a deployed
+    workspace exited 1 — `Configuration is invalid … Invalid input mcp.file_example` — and
+    `--print-logs --log-level DEBUG` named the cause: `Unrecognized key: "cwd"`. The schema
+    opencode.ai publishes still documents `cwd`, and the copy committed under `tests/assets/`
+    validates a configuration carrying it, so a schema check cannot stand in for a load
+    check. 0.2.0 shipped that key and no OpenCode would start with it.
+
+    The failure this pins is silent in this repository and loud in a user's project. Two
+    assertions: the emitted entry may carry only keys the runtime's validator knows, and the
+    README may not drift back to claiming no session has ever loaded the output.
+    """
+    out = tmp_path / "loaded"
+    build(EXAMPLE, out)
+    config = json.loads((out / "opencode.json").read_text())
+    known = {"type", "command", "enabled", "environment", "timeout"}
+    for name, entry in config["mcp"].items():
+        unknown = set(entry) - known
+        assert not unknown, f"`{name}` carries keys opencode 1.1.2 rejects: {sorted(unknown)}"
+
+    readme = (ROOT / "README.md").read_text()
+    assert "No live OpenCode session has ever loaded this output" not in readme, (
+        "opencode 1.1.2 loads this output: that blanket caveat is no longer true")
+    loaded = readme.split("### What was NOT verified", 1)[1]
+    assert "1.1.2" in loaded and "opencode agent list" in loaded
