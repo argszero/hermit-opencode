@@ -23,13 +23,45 @@ that copy at `adapter/` in its own output directory; [`deploy`](#deploy-into-a-w
 puts it at `.opencode/adapter/` inside your project, where a directory named
 `adapter/` may already be yours.
 
+## Why not just `hermit convert`?
+
+Because hermit has no OpenCode target. Measured 2026-11-08 against
+`hermit-harness 0.2.0` — the latest release on PyPI — and against upstream
+`main` at `e79cbff`:
+
+```text
+$ hermit convert --adapter <adapter> --target opencode --output out/
+hermit convert: error: argument --target: invalid choice: 'opencode'
+                 (choose from claude-code, codex, pi, hermes)
+```
+
+Those four are a hardcoded map — `EMITTERS` in `hermit/plugins/__init__.py`, with
+`TARGETS = tuple(EMITTERS)` — and there is no entry point or registration hook,
+so a fifth host cannot be added from outside hermit. Bringing an adapter to
+OpenCode therefore needs a command of its own, which is what this is.
+
+What that means for you, and nothing more:
+
+- **`hermit-harness 0.2.0` or later** wherever the tools are served from: the
+  embedded adapter is in the `.hermit/` layout, and 0.1.0 reads `adapter.yaml` at
+  the adapter root and refuses this one. The measurement is in
+  [Requirements](#requirements--which-hermit-for-which-part).
+- **`opencode 1.1.2`** is the version this output was load-checked against —
+  `opencode agent list` in a deployed workspace lists the adapter's subagent
+  ([verification item 8](#verification--what-was-actually-run)).
+- **`deploy` wants a workspace you already have**, which `hermit convert` never
+  asks for: it writes a directory of its own and leaves the copying to you. That
+  is why `deploy` merges your `opencode.json` instead of replacing it, refuses a
+  tree it did not create unless `--force`, and never deletes anything — see
+  [What deploy does not do](#what-deploy-does-not-do).
+
 ## Install
 
 Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.1/hermit_opencode-0.2.1-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.2/hermit_opencode-0.2.2-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -363,12 +395,14 @@ cleared and every dependency installed into the venv, and it is the reading the
 recommendation rests on.
 
 **6. The install command at the top of this page, from a clean virtualenv — both
-commands.**
+commands.** 0.2.2 changes documentation only, so the runtime readings below were
+taken on 0.2.1 and re-taken on 0.2.2 with the same result; the version here is the
+one you get from the URL at the top.
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.1/hermit_opencode-0.2.1-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.2/hermit_opencode-0.2.2-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.1
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.2
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
   ... "omitted": [], "record": "hermit-opencode.json" }
 EXIT CODE: 0
@@ -393,7 +427,7 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.1 build under test:
+the 0.2.2 build under test:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
@@ -537,14 +571,17 @@ is.
 The code descends from pull request #39, which was closed without being merged;
 see `NOTICE` for what was derived and what changed.
 
-Hermit pull request #42 proposes the same deploy route *inside hermit's core*
-(`hermit/hosts/opencode.py`, `--host opencode`), and it was open and conflicting
-when this was written. This package does not touch hermit's tree, so the two do
-not compete for a merge: if that route lands upstream, this one remains the way to
-reach OpenCode without changing hermit. What the two must not do is write the same
-workspace — the collision is measured and written up in
-[Relation to #42](https://github.com/Infini-AI-Lab/hermit/pull/39), where
-`opencode.json` is written wholesale by both and the second writer silently wins.
+Hermit pull request #42 proposed the same deploy route *inside hermit's core*
+(`hermit/hosts/opencode.py`, `--host opencode`). **It is closed** — read
+2026-11-08, `CLOSED` and unmerged — so the core route does not exist and this
+package is what remains of it. It descends from the `convert` half only (pull
+request #39, also closed unmerged); see `NOTICE`.
+
+Should a core route be proposed again, the thing not to do is let both write the
+same workspace: that collision was measured and is written up in
+[Relation to #42](https://github.com/Infini-AI-Lab/hermit/pull/39) — `opencode.json`
+written wholesale by both, the second writer silently winning, and #42's
+`environment` block disappearing with it.
 
 ## License
 
