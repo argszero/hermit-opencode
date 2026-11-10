@@ -25,9 +25,10 @@ puts it at `.opencode/adapter/` inside your project, where a directory named
 
 ## Why not just `hermit convert`?
 
-Because hermit has no OpenCode target. Measured 2026-11-08 against
+Because hermit has no OpenCode target. Measured 2026-11-11 against
 `hermit-harness 0.2.0` — the latest release on PyPI — and against upstream
-`main` at `e79cbff`:
+`main` at `1b0d897`, which is `main` *after* OpenCode landed there as a deploy
+host (pull request #94, commit `1310de6`):
 
 ```text
 $ hermit convert --adapter <adapter> --target opencode --output out/
@@ -46,9 +47,12 @@ What that means for you, and nothing more:
   embedded adapter is in the `.hermit/` layout, and 0.1.0 reads `adapter.yaml` at
   the adapter root and refuses this one. The measurement is in
   [Requirements](#requirements--which-hermit-for-which-part).
-- **`opencode 1.1.2`** is the version this output was load-checked against —
-  `opencode agent list` in a deployed workspace lists the adapter's subagent
-  ([verification item 8](#verification--what-was-actually-run)).
+- **`opencode 1.1.2` and `opencode 1.19.5`** both load this output — `opencode
+  agent list` exits 0 in a deployed workspace on each, against an empty-directory
+  control that also exits 0 ([verification item 8](#verification--what-was-actually-run)).
+  1.1.2 is the older of the two and the one earlier releases of this package were
+  checked against; the pair is measured in
+  [Relation to hermit's own OpenCode work](#relation-to-hermits-own-opencode-work).
 - **`deploy` wants a workspace you already have**, which `hermit convert` never
   asks for: it writes a directory of its own and leaves the copying to you. That
   is why `deploy` merges your `opencode.json` instead of replacing it, refuses a
@@ -61,7 +65,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.2/hermit_opencode-0.2.2-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.3/hermit_opencode-0.2.3-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -395,14 +399,14 @@ cleared and every dependency installed into the venv, and it is the reading the
 recommendation rests on.
 
 **6. The install command at the top of this page, from a clean virtualenv — both
-commands.** 0.2.2 changes documentation only, so the runtime readings below were
-taken on 0.2.1 and re-taken on 0.2.2 with the same result; the version here is the
-one you get from the URL at the top.
+commands.** 0.2.2 and 0.2.3 change documentation only, so the runtime readings
+below were taken on 0.2.1 and re-taken on 0.2.2 and 0.2.3 with the same result;
+the version here is the one you get from the URL at the top.
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.2/hermit_opencode-0.2.2-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.3/hermit_opencode-0.2.3-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.2
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.3
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
   ... "omitted": [], "record": "hermit-opencode.json" }
 EXIT CODE: 0
@@ -427,7 +431,7 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.2 build under test:
+the 0.2.3 build under test:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
@@ -559,29 +563,61 @@ package is the first half, as a standalone tool.
 
 Both halves now exist as commands of this package. `convert` is the first,
 `deploy` the second, and `deploy` writes into a workspace the way hermit's own
-`deploy` does for its four hosts — using OpenCode's own places rather than a
-managed block in `AGENTS.md`.
+`deploy` does for its hosts — using OpenCode's own places rather than a managed
+block in `AGENTS.md`.
 
-Hermit cannot host this itself: `hermit/plugins/__init__.py` is a hardcoded map
-of four emitters with no entry points or registration hook, so a fifth host
-cannot be added without changing hermit's core. A converter for a host hermit
-does not yet support therefore has to ship its own command — which is what this
-is.
+**Upstream's position, re-measured 2026-11-11 at `1b0d897`.** Pull request #42
+proposed this route inside hermit's core and was closed unmerged, but the core
+route was later built by someone else: pull request #94 (commit `1310de6`,
+merged 2026-11-10) added `hermit/hosts/opencode.py` and a fifth `--host`
+choice. **So `hermit deploy --host opencode` exists now, and if it works for
+you, use it.** The rest of this section is the measurement of where it does and
+does not.
+
+*What upstream still does not do.* `hermit convert` has no OpenCode target:
+
+```text
+$ hermit convert --adapter <adapter> --target {claude-code,codex,pi,hermes}
+```
+
+Read at `1b0d897` from `hermit/cli.py:46` — five deploy hosts, four convert
+targets. `EMITTERS` in `hermit/plugins/__init__.py:10` is still
+`{"claude-code", "codex", "pi", "hermes"}`, with no entry point or registration
+hook, so `convert` still cannot reach OpenCode from outside hermit. That half is
+this package's alone, and it is what `convert` is for.
+
+*What `deploy` still does differently.* One `lean_swarm` adapter into two empty
+workspaces, upstream's `hermit deploy --host opencode` on one side and this
+package's on the other, then both read back with `opencode agent list` beside an
+empty-directory control:
+
+| | upstream at `1b0d897` | this package |
+|---|---|---|
+| `opencode.json` `mcp` shape | `{"mcp": {"servers": {<name>: …}}}` | `{"mcp": {<name>: {…}}}` |
+| `opencode 1.1.2` | **exit 1** — `Configuration is invalid … Invalid input mcp.servers` | exit 0 |
+| `opencode 1.19.5` | exit 0 | exit 0 |
+| empty-directory control | exit 0 | exit 0 |
+| server `command` | absolute paths: the install's `python`, the source adapter, `PYTHONPATH` at the hermit checkout | `hermit serve adapter` — relative to the workspace |
+| context | a managed block inside `AGENTS.md` | `.opencode/context.md`, named under `instructions` in `opencode.json` |
+| other keys emitted | `type`, `codemode`, `timeout.execution`, `environment` | `type`, `enabled` |
+
+The `mcp.servers` key is the newer spelling and the published schema marks the
+name-keyed form deprecated, so this is a version-range difference rather than a
+feature one: upstream's output needs an opencode new enough to accept
+`servers`, and on `1.1.2` it is refused at load. This package's output loads on
+both, at the price of writing the deprecated key. A reader on 1.19.5 or later
+should prefer upstream's command.
 
 The code descends from pull request #39, which was closed without being merged;
 see `NOTICE` for what was derived and what changed.
 
-Hermit pull request #42 proposed the same deploy route *inside hermit's core*
-(`hermit/hosts/opencode.py`, `--host opencode`). **It is closed** — read
-2026-11-08, `CLOSED` and unmerged — so the core route does not exist and this
-package is what remains of it. It descends from the `convert` half only (pull
-request #39, also closed unmerged); see `NOTICE`.
-
-Should a core route be proposed again, the thing not to do is let both write the
-same workspace: that collision was measured and is written up in
+Should both write the same workspace, the thing not to do is let them: that
+collision was measured and is written up in
 [Relation to #42](https://github.com/Infini-AI-Lab/hermit/pull/39) — `opencode.json`
 written wholesale by both, the second writer silently winning, and #42's
-`environment` block disappearing with it.
+`environment` block disappearing with it. Upstream's host writes `opencode.json`
+wholesale, so deploying this package's output over it, or the reverse, replaces
+the other's file rather than merging.
 
 ## License
 
