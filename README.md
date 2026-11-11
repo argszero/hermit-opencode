@@ -47,11 +47,15 @@ What that means for you, and nothing more:
   embedded adapter is in the `.hermit/` layout, and 0.1.0 reads `adapter.yaml` at
   the adapter root and refuses this one. The measurement is in
   [Requirements](#requirements--which-hermit-for-which-part).
-- **`opencode 1.1.2` and `opencode 1.19.5`** both load this output — `opencode
-  agent list` exits 0 in a deployed workspace on each, against an empty-directory
-  control that also exits 0 ([verification item 8](#verification--what-was-actually-run)).
-  1.1.2 is the older of the two and the one earlier releases of this package were
-  checked against; the pair is measured in
+- **`opencode 1.1.2` or later** loads this output — `opencode agent list` exits 0
+  in a deployed workspace on 1.1.2 and on 1.19.5, against an empty-directory
+  control that also exits 0 on each
+  ([verification item 8](#verification--what-was-actually-run)). 1.1.2 is the
+  oldest version this was checked on. This is **not** true of upstream's
+  `hermit deploy --host opencode` output, which needs `opencode 1.18.27` or
+  later; the bisect that found that floor is
+  [verification item 9](#verification--what-was-actually-run), and what it means
+  for a reader is in
   [Relation to hermit's own OpenCode work](#relation-to-hermits-own-opencode-work).
 - **`deploy` wants a workspace you already have**, which `hermit convert` never
   asks for: it writes a directory of its own and leaves the copying to you. That
@@ -65,7 +69,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.3/hermit_opencode-0.2.3-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.4/hermit_opencode-0.2.4-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -272,9 +276,21 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[test]"
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-**1. The suite: 12 passed, no network, no hermit installed.**
+**1. The suite: 26 passed, no network, no hermit installed.**
 
 ```text
+tests/test_deploy.py::test_deploy_writes_the_four_parts_in_place PASSED
+tests/test_deploy.py::test_a_workspace_this_tool_did_not_create_is_refused PASSED
+tests/test_deploy.py::test_force_adopts_a_project_and_says_what_it_overwrote PASSED
+tests/test_deploy.py::test_a_second_deploy_changes_nothing_it_generated PASSED
+tests/test_deploy.py::test_deploy_refuses_a_config_it_cannot_merge_into PASSED
+tests/test_deploy.py::test_deploy_refuses_an_opencode_json_that_is_not_json PASSED
+tests/test_deploy.py::test_deploy_refuses_hooks_before_writing PASSED
+tests/test_deploy.py::test_deploy_refuses_an_adapter_that_is_not_plugin_portable PASSED
+tests/test_deploy.py::test_deploy_refuses_a_workspace_inside_the_adapter PASSED
+tests/test_deploy.py::test_cli_deploys_and_the_old_positional_spelling_still_converts PASSED
+tests/test_deploy.py::test_cli_reports_a_refused_workspace_with_exit_2 PASSED
+tests/test_deploy.py::test_the_deployed_config_validates_against_the_opencode_schema PASSED
 tests/test_emit.py::test_opencode_carries_every_part PASSED
 tests/test_emit.py::test_opencode_without_context_writes_no_instructions PASSED
 tests/test_emit.py::test_opencode_keeps_the_audit_log_of_an_earlier_conversion PASSED
@@ -287,6 +303,8 @@ tests/test_emit.py::test_cli_emits_and_exits_zero PASSED
 tests/test_emit.py::test_cli_reports_a_bad_adapter_with_exit_2 PASSED
 tests/test_emit.py::test_emitted_config_validates_against_the_opencode_schema PASSED
 tests/test_emit.py::test_the_served_command_and_the_readme_agree_on_which_hermit_can_run_it PASSED
+tests/test_emit.py::test_the_workspace_command_and_the_readme_agree_on_what_deploy_writes PASSED
+tests/test_emit.py::test_the_output_is_something_opencode_actually_loads PASSED
 ```
 
 The first three are ported from hermit pull request #39 (`f1027bf`), where they
@@ -399,14 +417,14 @@ cleared and every dependency installed into the venv, and it is the reading the
 recommendation rests on.
 
 **6. The install command at the top of this page, from a clean virtualenv — both
-commands.** 0.2.2 and 0.2.3 change documentation only, so the runtime readings
-below were taken on 0.2.1 and re-taken on 0.2.2 and 0.2.3 with the same result;
-the version here is the one you get from the URL at the top.
+commands.** 0.2.2, 0.2.3 and 0.2.4 change documentation only, so the runtime
+readings below were taken on 0.2.1 and re-taken on 0.2.2, 0.2.3 and 0.2.4 with the
+same result; the version here is the one you get from the URL at the top.
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.3/hermit_opencode-0.2.3-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.4/hermit_opencode-0.2.4-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.3
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.4
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
   ... "omitted": [], "record": "hermit-opencode.json" }
 EXIT CODE: 0
@@ -431,7 +449,7 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.3 build under test:
+the 0.2.4 build under test:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
@@ -533,6 +551,26 @@ Seven built-ins and no `reviewer`. The eighth line is therefore read from the
 deployed files, not built into the CLI — which is the difference between "the
 format looks right" and "the host read what we wrote".
 
+**9. The version boundary: upstream's output does not load below `1.18.27`.**
+Item 8 shows this package's output loading on 1.1.2. Running the same command
+against a workspace written by `hermit deploy --host opencode`, from the same
+`exports.yaml`, is where the two tools part:
+
+```text
+$ opencode agent list     # workspace written by `hermit deploy --host opencode`
+1.1.2     Error: Configuration is invalid … Invalid input mcp.servers    EXIT 1
+1.18.22   the same refusal, on the same key                             EXIT 1
+1.18.27   agents listed                                                 EXIT 0
+1.19.5    agents listed                                                 EXIT 0
+```
+
+Four installs of the CLI, one workspace, nothing else changed — and the
+empty-directory control exits 0 on each of the four, so the refusals come from
+the file. Upstream writes `{"mcp": {"servers": …}}` (`hermit/hosts/opencode.py` at
+`9c45a65`); this package writes `mcp` keyed by server name. The boundary between
+1.18.22 and 1.18.27 was not narrowed further, so `1.18.27` is the first version
+*verified* to accept it rather than proven to be the first that can.
+
 ### What was NOT verified
 
 **A model-driven session using these parts.** `opencode 1.1.2` reads the output —
@@ -548,6 +586,20 @@ Also unmeasured for that reason: whether OpenCode's tool-name handling rewrites
 `file_example` into its own naming scheme in a session, and how it renders a
 `description` containing non-ASCII text (emitted as a JSON string inside YAML
 frontmatter — valid, still worth eyeballing).
+
+**The exact opencode version where upstream's output starts loading.** That
+boundary was bisected to a **range, not a version**: refused at `1.18.22`, accepted
+at `1.18.27`, so it lies somewhere in `1.18.23`–`1.18.27`. `1.18.27` is the first
+version verified to accept it, not proven to be the first that can. Two further
+probes would settle one cell of it; the range is what is known and what the table
+above states.
+
+**And this finding could not be reported where it was found.** It is a fact about
+`hermit deploy --host opencode`, so it belongs on hermit's issue #35 — but the
+account this package is published from cannot write to that repository (its
+owner blocked it: `GraphQL: User is blocked`, and the pull permission alone
+remains). So it is recorded here instead, in the documentation of the tool that
+works around it, because here is the only place it can be recorded.
 
 **`deploy` writes into a project you already have**, rather than into an empty
 directory of its own. Run it first in a fresh directory, or in a tree under version
@@ -595,8 +647,10 @@ empty-directory control:
 |---|---|---|
 | `opencode.json` `mcp` shape | `{"mcp": {"servers": {<name>: …}}}` | `{"mcp": {<name>: {…}}}` |
 | `opencode 1.1.2` | **exit 1** — `Configuration is invalid … Invalid input mcp.servers` | exit 0 |
+| `opencode 1.18.22` | **exit 1** — the same refusal | exit 0 |
+| `opencode 1.18.27` | exit 0 | exit 0 |
 | `opencode 1.19.5` | exit 0 | exit 0 |
-| empty-directory control | exit 0 | exit 0 |
+| empty-directory control, on each of the four | exit 0 | exit 0 |
 | server `command` | absolute paths: the install's `python`, the source adapter, `PYTHONPATH` at the hermit checkout | `hermit serve adapter` — relative to the workspace |
 | context | a managed block inside `AGENTS.md` | `.opencode/context.md`, named under `instructions` in `opencode.json` |
 | other keys emitted | `type`, `codemode`, `timeout.execution`, `environment` | `type`, `enabled` |
@@ -604,9 +658,13 @@ empty-directory control:
 The `mcp.servers` key is the newer spelling and the published schema marks the
 name-keyed form deprecated, so this is a version-range difference rather than a
 feature one: upstream's output needs an opencode new enough to accept
-`servers`, and on `1.1.2` it is refused at load. This package's output loads on
-both, at the price of writing the deprecated key. A reader on 1.19.5 or later
-should prefer upstream's command.
+`servers`, and 1.1.2 and 1.18.22 both refuse it at load. **The boundary was
+bisected: refused at `1.18.22`, accepted at `1.18.27`, so it lies somewhere in
+1.18.23–1.18.27; 1.18.27 is the first version this was verified to load on.**
+This package's output loads on all four versions above, at the price of writing
+the deprecated key. **A reader on `opencode 1.18.27` or later should prefer
+`hermit deploy --host opencode`; below that, upstream's output does not load at
+all and this package's does.**
 
 The code descends from pull request #39, which was closed without being merged;
 see `NOTICE` for what was derived and what changed.
