@@ -69,7 +69,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.4/hermit_opencode-0.2.4-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.5/hermit_opencode-0.2.5-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -417,14 +417,14 @@ cleared and every dependency installed into the venv, and it is the reading the
 recommendation rests on.
 
 **6. The install command at the top of this page, from a clean virtualenv — both
-commands.** 0.2.2, 0.2.3 and 0.2.4 change documentation only, so the runtime
-readings below were taken on 0.2.1 and re-taken on 0.2.2, 0.2.3 and 0.2.4 with the
-same result; the version here is the one you get from the URL at the top.
+commands.** 0.2.2 through 0.2.5 change documentation only, so the runtime readings
+below were taken on 0.2.1 and re-taken on each later release with the same result;
+the version here is the one you get from the URL at the top.
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.4/hermit_opencode-0.2.4-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.5/hermit_opencode-0.2.5-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.4
+Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.5
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
   ... "omitted": [], "record": "hermit-opencode.json" }
 EXIT CODE: 0
@@ -449,7 +449,7 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.4 build under test:
+the 0.2.5 build under test:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
@@ -632,11 +632,18 @@ does not.
 $ hermit convert --adapter <adapter> --target {claude-code,codex,pi,hermes}
 ```
 
-Read at `1b0d897` from `hermit/cli.py:46` — five deploy hosts, four convert
-targets. `EMITTERS` in `hermit/plugins/__init__.py:10` is still
+`EMITTERS` in `hermit/plugins/__init__.py:10` is still
 `{"claude-code", "codex", "pi", "hermes"}`, with no entry point or registration
 hook, so `convert` still cannot reach OpenCode from outside hermit. That half is
 this package's alone, and it is what `convert` is for.
+
+Two lists decide this, and this page does not write down their lengths: they are
+what `hermit deploy --help` prints under `--host` and what `hermit convert
+--help` prints under `--target`. The deploy list has grown since this section was
+first written — `dsh` in #90, `hermes` in #107 — and it includes `opencode`; the
+convert list has not moved. That asymmetry is why this package exists, and asking
+the command is how a reader checks it instead of trusting a count measured once.
+`--target` was re-read at `02f57f3` on 2026-11-18 and still lists those four.
 
 *What `deploy` still does differently.* One `lean_swarm` adapter into two empty
 workspaces, upstream's `hermit deploy --host opencode` on one side and this
