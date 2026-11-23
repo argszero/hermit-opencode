@@ -157,6 +157,17 @@ out/
   adapter/               the whole adapter, embedded
 ```
 
+**The embedded copy is named, not listed.** Since hermit `42fbd08`, a plugin for
+any of the four targets names the adapter's folder and the files no export
+connects — Claude Code through a `SessionStart` hook, the other three under
+`unnamed_files`. This tool emits no such hook and no such list: the whole
+adapter is copied to `adapter/`, less `__pycache__`, `.git` and `*.pyc`, so a
+file it carries but no export connects is in that tree and named nowhere. The
+one unconnected part it does name is **hooks**, which it refuses unless you
+pass `--allow-lossy`, and then lists under `omitted` — the same refusal, and
+the same list, that hermit's own `refuse()` applies to all four targets
+(`hermit/plugins/common.py:89`, "no plugin carries an adapter's hooks yet").
+
 Then:
 
 ```bash
@@ -618,13 +629,14 @@ Both halves now exist as commands of this package. `convert` is the first,
 `deploy` does for its hosts — using OpenCode's own places rather than a managed
 block in `AGENTS.md`.
 
-**Upstream's position, re-measured 2026-11-11 at `1b0d897`.** Pull request #42
-proposed this route inside hermit's core and was closed unmerged, but the core
-route was later built by someone else: pull request #94 (commit `1310de6`,
-merged 2026-11-10) added `hermit/hosts/opencode.py` and a fifth `--host`
-choice. **So `hermit deploy --host opencode` exists now, and if it works for
-you, use it.** The rest of this section is the measurement of where it does and
-does not.
+**Upstream's position, as of 2026-11-21.** Issue #35 was closed as completed by
+hermit's maintainer `haizhongzheng`, in the first comment that thread ever
+received from anyone other than its reporter: *"Done on main (42fbd083):
+OpenCode runs as an acting agent (`agent.name: opencode`) and `hermit deploy
+--host opencode` prepares a workspace for it. `hermit convert --target
+opencode` is not supported (#39 was closed unmerged); open a new issue if it is
+needed."* So the split this package exists for is upstream's own statement now,
+not this page's reading of it.
 
 *What upstream still does not do.* `hermit convert` has no OpenCode target:
 
