@@ -31,13 +31,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import fnmatch
 import json
+import posixpath
 import shutil
 
 import yaml
 
 from . import __version__ as CONVERTER_VERSION
-from .manifest import AdapterError, read as read_manifest
+from .manifest import AdapterError, EXPORTS, MANIFEST_V1, MANIFEST_V2, read as read_manifest
 
 # The adapter travels inside the configuration: a configuration that referenced an
 # outside directory would break the moment it was copied anywhere else.
@@ -242,6 +244,61 @@ def embed_adapter(bundle: Bundle, root: Path) -> Path:
     return target
 
 
+def _norm(relative: str) -> str:
+    """An adapter path as one name, with `./` and `..` resolved: what a manifest entry and
+    a file's own relative path have to agree on to be recognisable as the same file."""
+    name = posixpath.normpath(str(relative).replace("\\", "/"))
+    return "" if name == "." else name
+
+
+def unnamed_files(bundle: Bundle) -> list:
+    """The adapter's files that the emitted configuration connects nothing to.
+
+    What the configuration reaches is finite and known when it is written: the context,
+    the manifest `hermit serve` reads, the directories the skills and roles come from,
+    each tool's entrypoint, and a declared hooks file. A file none of those reaches is
+    copied into `adapter/` all the same, and no part of the output names it — a session
+    finds it only if something tells it to look. hermit's own plugins report the same
+    list, under this name, since `42fbd08`; this tool names what its own emission
+    reaches, which includes the whole of `.hermit/` because it carries the whole adapter.
+    """
+    adapter = bundle.adapter
+    manifest = bundle.manifest
+    connected = {_norm(MANIFEST_V1), _norm(MANIFEST_V2), _norm(EXPORTS), _norm(manifest["context"])}
+    directories = []
+    skills = manifest.get("skills")
+    if isinstance(skills, str):
+        source = (adapter / skills).resolve()
+        # Only a directory holding a SKILL.md is exported, so only then is the tree connected.
+        if source.is_dir() and any((child / "SKILL.md").is_file() for child in source.iterdir()):
+            directories.append(f"{_norm(skills)}/")
+    if isinstance(manifest.get("agents"), str):
+        directories.append(f"{_norm(manifest['agents'])}/")
+    if isinstance(manifest.get("hooks"), str):
+        connected.add(_norm(manifest["hooks"]))
+    for tool in bundle.tools:
+        entrypoint = tool.get("entrypoint")
+        if isinstance(entrypoint, str):
+            connected.add(_norm(entrypoint.partition(":")[0]))
+    internal = [_norm(p) for p in manifest.get("internal") or [] if isinstance(p, str)]
+    document = adapter / manifest["context"]
+    context = document.read_bytes() if document.is_file() else None
+    out = []
+    for path in sorted(p for p in adapter.rglob("*") if p.is_file()):
+        relative = path.relative_to(adapter)
+        name = relative.as_posix()
+        if any(part in IGNORED for part in relative.parts) or name.endswith(".pyc"):
+            continue                                    # the copy leaves it out: naming it would be false
+        if context is not None and path.stat().st_size == len(context) and path.read_bytes() == context:
+            continue                                    # a copy of the context: already carried as it
+        if name in connected or any(name.startswith(folder) for folder in directories):
+            continue
+        if any(fnmatch.fnmatch(name, pattern) for pattern in internal):
+            continue                                    # the harness's own, not the session's
+        out.append(name)
+    return out
+
+
 def copy_skills(bundle: Bundle, target: Path) -> list:
     """Every skill directory (one holding SKILL.md) under the adapter's `skills`."""
     declared = bundle.manifest.get("skills")
@@ -310,6 +367,7 @@ def build(adapter: Path, output: Path, *, allow_lossy: bool = False) -> dict:
     write_json(output / CONFIG, config)
 
     skills = copy_skills(bundle, output / DIR / "skills")
+    unnamed = unnamed_files(bundle)
     embed_adapter(bundle, output)
     record = {"adapter": bundle.id, "adapter_version": bundle.version, "layout": bundle.layout,
               "converter": f"hermit-opencode {CONVERTER_VERSION}"}
@@ -321,4 +379,4 @@ def build(adapter: Path, output: Path, *, allow_lossy: bool = False) -> dict:
             "skills": skills, "roles": roles,
             "server_name": bundle.server if bundle.tools else None,
             "tools": [t["name"] for t in bundle.tools],
-            "omitted": omitted, "record": RECORD}
+            "omitted": omitted, "unnamed_files": unnamed, "record": RECORD}

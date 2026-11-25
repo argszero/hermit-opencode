@@ -69,7 +69,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.5/hermit_opencode-0.2.5-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.6/hermit_opencode-0.2.6-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -145,7 +145,7 @@ hermit-opencode path/to/adapter --output out/
 ```
 
 It prints a JSON report (`adapter_id`, `layout`, `context`, `skills`, `roles`,
-`tools`, `server_name`, `omitted`) and writes:
+`tools`, `server_name`, `omitted`, `unnamed_files`) and writes:
 
 ```text
 out/
@@ -157,15 +157,18 @@ out/
   adapter/               the whole adapter, embedded
 ```
 
-**The embedded copy is named, not listed.** Since hermit `42fbd08`, a plugin for
-any of the four targets names the adapter's folder and the files no export
-connects — Claude Code through a `SessionStart` hook, the other three under
-`unnamed_files`. This tool emits no such hook and no such list: the whole
-adapter is copied to `adapter/`, less `__pycache__`, `.git` and `*.pyc`, so a
-file it carries but no export connects is in that tree and named nowhere. The
-one unconnected part it does name is **hooks**, which it refuses unless you
-pass `--allow-lossy`, and then lists under `omitted` — the same refusal, and
-the same list, that hermit's own `refuse()` applies to all four targets
+**The embedded copy is listed by name.** Since hermit `42fbd08`, a plugin for any of
+the four targets names the adapter's folder and the files no export connects —
+Claude Code through a `SessionStart` hook, the other three under `unnamed_files`.
+This tool emits no such hook, and reports the same list under the same name:
+`unnamed_files` in the JSON report. What counts as connected is what the
+configuration actually reaches — the context, the skill directories, the role
+files, each tool's entrypoint, and the manifest `hermit serve` reads. Everything
+else in `adapter/` (`EVOLVER.md`, `README.md`, a data directory) is carried into
+your project and named by no part of it, so a session finds it only if something
+tells it to look. Hooks are the one part named for a different reason: refused
+unless you pass `--allow-lossy`, and then listed under `omitted` — the same
+refusal hermit's own `refuse()` applies to all four targets
 (`hermit/plugins/common.py:89`, "no plugin carries an adapter's hooks yet").
 
 Then:
@@ -287,7 +290,7 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[test]"
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-**1. The suite: 26 passed, no network, no hermit installed.**
+**1. The suite: 28 passed, no network, no hermit installed.**
 
 ```text
 tests/test_deploy.py::test_deploy_writes_the_four_parts_in_place PASSED
@@ -310,6 +313,8 @@ tests/test_emit.py::test_a_directory_that_is_not_an_adapter_is_reported PASSED
 tests/test_emit.py::test_refuses_a_foreign_nonempty_directory PASSED
 tests/test_emit.py::test_refuses_hooks_but_can_leave_them_out PASSED
 tests/test_emit.py::test_refuses_an_adapter_that_is_not_plugin_portable PASSED
+tests/test_emit.py::test_names_the_files_no_export_connects PASSED
+tests/test_emit.py::test_unnamed_files_leaves_out_what_is_not_carried_or_is_the_harnesss PASSED
 tests/test_emit.py::test_cli_emits_and_exits_zero PASSED
 tests/test_emit.py::test_cli_reports_a_bad_adapter_with_exit_2 PASSED
 tests/test_emit.py::test_emitted_config_validates_against_the_opencode_schema PASSED
@@ -321,7 +326,11 @@ tests/test_emit.py::test_the_output_is_something_opencode_actually_loads PASSED
 The first three are ported from hermit pull request #39 (`f1027bf`), where they
 were the specification for `hermit convert --target opencode`; they assert
 OpenCode's format, not hermit's internals, so they still hold here. The fourth
-and fifth cover the second manifest layout, which that request never had to.
+and fifth cover the second manifest layout, which that request never had to. The
+two `unnamed_files` cases cover what hermit added in `42fbd08`: the first asserts
+the list against the emission's own output rather than against a written-down
+expectation, and the second that each of the three reasons a file stays out of
+the list holds.
 
 `python -c "import hermit"` in that venv raises `ModuleNotFoundError`. That is
 the zero-dependency claim, measured rather than asserted — but run it from this
@@ -428,23 +437,35 @@ cleared and every dependency installed into the venv, and it is the reading the
 recommendation rests on.
 
 **6. The install command at the top of this page, from a clean virtualenv — both
-commands.** 0.2.2 through 0.2.5 change documentation only, so the runtime readings
+commands.** 0.2.2 through 0.2.5 changed documentation only, so the runtime readings
 below were taken on 0.2.1 and re-taken on each later release with the same result;
-the version here is the one you get from the URL at the top.
+the version here is the one you get from the URL at the top. 0.2.6 is the first
+release since to change the code: it adds one field to the `convert` report, and
+the tree it writes does not move — converting this same adapter with the 0.2.5
+wheel and with 0.2.6 gives byte-identical output, apart from the `converter`
+string in `hermit-opencode.json` — so the readings that depend on the emitted
+configuration stand as taken.
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.5/hermit_opencode-0.2.5-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.6/hermit_opencode-0.2.6-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.3 hermit-opencode-0.2.5
+Successfully installed PyYAML-6.0.4 hermit-opencode-0.2.6
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
-  ... "omitted": [], "record": "hermit-opencode.json" }
+  ...
+  "omitted": [],
+  "unnamed_files": [
+    ".hermit/EVOLVER.md",
+    "README.md"
+  ],
+  "record": "hermit-opencode.json"
+}
 EXIT CODE: 0
 $ hermit-opencode deploy docs/_examples/file_adapter --workspace ws/
   ... "adapter_dir": ".opencode/adapter", "record": ".opencode/hermit-opencode.json" }
 EXIT CODE: 0
 ```
 
-`PyYAML 6.0.3` there is a dependency actually fetched from PyPI, not one
+`PyYAML 6.0.4` there is a dependency actually fetched from PyPI, not one
 inherited from the host — this whole series runs with `PYTHONPATH` cleared, for
 the reason the caveat in item 5 gives. The asset served from that URL hashes
 identically to the one built here; the release notes carry the `sha256` of both
@@ -460,7 +481,7 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.5 build under test:
+the 0.2.6 build under test:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force

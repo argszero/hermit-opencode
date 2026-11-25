@@ -138,6 +138,44 @@ def test_refuses_an_adapter_that_is_not_plugin_portable(tmp_path):
         build(a, tmp_path / "out")
 
 
+def test_names_the_files_no_export_connects(tmp_path):
+    """Parity with hermit `42fbd08`, measured from this tool's own emission.
+
+    The reach is knowable: the context, the manifest `hermit serve` reads, the skill and
+    role directories, and each tool's entrypoint are all connected, so none of them is
+    named. `.hermit/EVOLVER.md` (the evolution prompt) and `README.md` are carried into
+    `adapter/` and reached by nothing — which is the thing the user cannot see otherwise.
+    """
+    out = tmp_path / "connects"
+    result = build(EXAMPLE, out)
+    assert result["unnamed_files"] == [".hermit/EVOLVER.md", "README.md"]
+    copied = sorted(p.relative_to(out / "adapter").as_posix()
+                    for p in (out / "adapter").rglob("*") if p.is_file())
+    assert set(result["unnamed_files"]) <= set(copied), "every file it names is in the copy it describes"
+    for name in ("ADAPTER.md", "exports.yaml", ".hermit/adapter.yaml",
+                 "skills/verify-output/SKILL.md", "agents/reviewer.md", "tools.py"):
+        assert name in copied and name not in result["unnamed_files"], f"{name} is reached by the configuration"
+
+
+def test_unnamed_files_leaves_out_what_is_not_carried_or_is_the_harnesss(tmp_path):
+    """Three things stay out of the list, each for its own reason, and each is checkable."""
+    a = variant(tmp_path)
+    (a / "data").mkdir()
+    (a / "data" / "notes.txt").write_text("carried, and named by nothing\n")
+    (a / "AGENTS.md").write_text((a / "ADAPTER.md").read_text())     # a copy of the context
+    (a / ".hermit" / "memory").mkdir()
+    (a / ".hermit" / "memory" / "bank.json").write_text("{}\n")
+    (a / "exports.yaml").write_text((a / "exports.yaml").read_text() + "internal:\n  - .hermit/memory/**\n")
+    (a / "__pycache__").mkdir()
+    (a / "__pycache__" / "tools.cpython-313.pyc").write_bytes(b"\x00")
+    result = build(a, tmp_path / "leaves_out")
+    assert "data/notes.txt" in result["unnamed_files"]
+    assert "AGENTS.md" not in result["unnamed_files"], "a copy of the context is already carried as the context"
+    assert ".hermit/memory/bank.json" not in result["unnamed_files"], "the harness reads it; it is not the session's"
+    assert not any(name.endswith(".pyc") for name in result["unnamed_files"]), (
+        "a file the copy leaves out cannot be reported as carried-but-unnamed")
+
+
 def test_cli_emits_and_exits_zero(tmp_path):
     out = tmp_path / "cli"
     proc = subprocess.run([sys.executable, "-m", "hermit_opencode.cli", str(EXAMPLE), "--output", str(out)],
