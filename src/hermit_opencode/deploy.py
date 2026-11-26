@@ -24,7 +24,8 @@ import shutil
 
 from . import __version__ as CONVERTER_VERSION
 from .emit import (AUDIT_DIR, AUDIT_LOG, CONFIG, CONTEXT, DIR, IGNORED, RECORD, SCHEMA,
-                   SERVER_COMMAND, Unsupported, agent_file, copy_skills, load, role_body, write_json)
+                   SERVER_COMMAND, Unsupported, adapter_context, agent_file, copy_skills, load,
+                   role_body, unnamed_files, write_json)
 
 # This converter's record inside a workspace, and the only marker that makes one ours.
 # Namespaced: a workspace is the user's, so nothing this tool owns sits at its root.
@@ -151,7 +152,10 @@ def deploy(adapter: Path, workspace: Path, *, allow_lossy: bool = False, force: 
         for name, native in roles.items():
             text = text.replace(f"`{name}`", f"`{native}`")
         (workspace / CONTEXT).parent.mkdir(parents=True, exist_ok=True)
-        (workspace / CONTEXT).write_text(text.strip() + "\n")
+        # The same three parts `convert` writes, with this tree's own folder: the adapter's
+        # copy is at `.opencode/adapter/` here, so that is the folder the note must name.
+        (workspace / CONTEXT).write_text(
+            adapter_context(bundle, WORKSPACE_ADAPTER, text, unnamed_files(bundle)))
     for role in bundle.roles:
         native = roles[role["name"]]
         path = workspace / DIR / "agents" / f"{native}.md"

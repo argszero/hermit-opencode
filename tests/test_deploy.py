@@ -196,3 +196,23 @@ def test_the_deployed_config_validates_against_the_opencode_schema(tmp_path):
     deploy(EXAMPLE, workspace)
     schema = json.loads(schema_path.read_text())
     jsonschema.Draft202012Validator(schema).validate(json.loads((workspace / "opencode.json").read_text()))
+
+
+def test_the_deployed_context_names_its_own_copy(tmp_path):
+    """The folder note names where *this* tree keeps the adapter, and what the copy carries.
+
+    `convert` and `deploy` write the same `.opencode/context.md` into two different
+    layouts — `adapter/` at an output directory's root, `.opencode/adapter/` inside a
+    project — so a note copied from the other command sends the session to a directory
+    that does not exist in this one. And without the note the carried files are named
+    nowhere the session reads at all.
+    """
+    workspace = tmp_path / "project"
+    deploy(EXAMPLE, workspace)
+    context = (workspace / ".opencode" / "context.md").read_text()
+    assert context.startswith("This adapter's files are in `.opencode/adapter/`.")
+    assert "Review the task requirements before acting. Check the result before returning it." in context
+    assert "- `.opencode/adapter/README.md`: File interface example" in context
+    assert "- `.opencode/adapter/.hermit/EVOLVER.md`: Editable files" in context
+    assert "`adapter/`" not in context, "the note must name this tree's copy, not convert's"
+    assert not (workspace / "adapter").exists()

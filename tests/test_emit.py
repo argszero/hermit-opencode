@@ -42,8 +42,9 @@ def test_opencode_carries_every_part(tmp_path):
     assert config["$schema"] == "https://opencode.ai/config.json"
     # Context: a file listed in `instructions`, which OpenCode combines with the project's own AGENTS.md.
     assert config["instructions"] == [".opencode/context.md"]
-    assert (out / ".opencode" / "context.md").read_text() == (
-        "Review the task requirements before acting. Check the result before returning it.\n")
+    context = (out / ".opencode" / "context.md").read_text()
+    assert context.startswith("This adapter's files are in `adapter/`.")
+    assert "Review the task requirements before acting. Check the result before returning it." in context
     # Tools: a local MCP server run from the workspace, so the config names no path from this machine.
     server = config["mcp"]["file_example"]
     assert server["type"] == "local" and server["enabled"] is True
@@ -174,6 +175,54 @@ def test_unnamed_files_leaves_out_what_is_not_carried_or_is_the_harnesss(tmp_pat
     assert ".hermit/memory/bank.json" not in result["unnamed_files"], "the harness reads it; it is not the session's"
     assert not any(name.endswith(".pyc") for name in result["unnamed_files"]), (
         "a file the copy leaves out cannot be reported as carried-but-unnamed")
+
+
+def test_the_context_names_the_files_no_export_connects(tmp_path):
+    """The session is told, in the file it reads, about the files no export reaches.
+
+    `unnamed_files` in the report is read by whoever runs the conversion; the context is
+    what the session reads when it starts, so a file named only in the report is a file
+    nothing that acts has been told about. hermit's own deployment builds this text from
+    three parts in one order — the folder note, the adapter's context, then the files it
+    does not connect (`hermit/hosts/opencode.py`, over `hermit.hosts.inputs`) — and this
+    case holds this tool to that composition.
+    """
+    out = tmp_path / "named"
+    result = build(EXAMPLE, out)
+    context = (out / ".opencode" / "context.md").read_text()
+    parts = context.split("\n\n")
+    assert len(parts) == 3, f"the context is not the three parts hermit composes: {context!r}"
+    note, adapter_text, others = parts
+    assert note.startswith("This adapter's files are in `adapter/`.")
+    assert adapter_text == "Review the task requirements before acting. Check the result before returning it."
+    assert others.startswith("Other files of this adapter (read one when it is relevant):")
+    # Each carried file the configuration does not reach, under the folder it was copied to,
+    # with the line its own author wrote for a reader rather than its first line of code.
+    assert "- `adapter/.hermit/EVOLVER.md`: Editable files" in others
+    assert "- `adapter/README.md`: File interface example" in others
+    for name in result["unnamed_files"]:
+        assert f"- `adapter/{name}`" in others, f"{name} is not named in the context the session reads"
+    for reached in ("ADAPTER.md", "exports.yaml", "tools.py", "agents/reviewer.md"):
+        assert f"`adapter/{reached}`" not in others, f"{reached} is reached, so the list may not name it"
+
+
+def test_the_context_lists_sixty_files_and_counts_the_rest(tmp_path):
+    """An adapter carrying more than the list holds gets a bounded section, not a wall.
+
+    The cap keeps a large adapter's context readable; the count is what keeps a bounded
+    list honest about what it left out.
+    """
+    a = variant(tmp_path, roles=False)
+    (a / "data").mkdir()
+    for n in range(65):
+        (a / "data" / f"note-{n:02d}.txt").write_text(f"note {n}\n")
+    out = tmp_path / "bounded"
+    result = build(a, out)
+    context = (out / ".opencode" / "context.md").read_text()
+    listed = [line for line in context.splitlines() if line.startswith("- `adapter/")]
+    assert len(result["unnamed_files"]) == 67 and len(listed) == 60
+    assert "- and 7 more files under `adapter/`" in context
+    assert "- `adapter/data/note-64.txt`" not in context, "the list stops at the cap, and says so"
 
 
 def test_cli_emits_and_exits_zero(tmp_path):

@@ -34,6 +34,7 @@ from pathlib import Path
 import fnmatch
 import json
 import posixpath
+import re
 import shutil
 
 import yaml
@@ -60,6 +61,8 @@ CONTEXT = f"{DIR}/context.md"
 AUDIT_DIR = f"{DIR}/audit"
 
 IGNORED = ("__pycache__", ".git", "*.pyc")
+
+LISTED_FILES = 60                 # the most files the context lists; the rest are counted
 
 
 class Unsupported(ValueError):
@@ -148,6 +151,63 @@ def _lenient_frontmatter(text: str) -> tuple[dict, str]:
             head[key.strip()] = value
     body = text[end + 4:].lstrip("-").lstrip("\n")
     return head, body
+
+
+def _summary(path: Path) -> str:
+    """One line about a file, from what its author wrote for a reader: the frontmatter
+    description, a Markdown or text file's first line of prose (comments left out), or a
+    Python file's docstring or leading comment; else nothing, because the first line of
+    code says nothing about the file."""
+    try:
+        text = path.read_text(encoding="utf-8")[:4000]
+    except (OSError, UnicodeDecodeError):
+        return ""
+    head, body = _lenient_frontmatter(text)
+    line = str(head.get("description") or "")
+    if not line and path.suffix in (".md", ".txt", ""):
+        prose = re.sub(r"<!--.*?(-->|$)", "", body, flags=re.S)
+        line = next((s.strip() for s in prose.splitlines() if s.strip()), "")
+    elif not line and path.suffix == ".py":
+        doc = re.match(r'\s*(?:#![^\n]*\n\s*)?(?:[rRuU]?("""|\'\'\')\s*(?P<doc>[^\n]*)|#\s*(?P<comment>[^\n]*))', text)
+        line = (doc.group("doc") or doc.group("comment") or "") if doc else ""
+    line = re.sub(r'^[#>*\-\s]+|[`]|("""|\'\'\')$', "", line).strip()
+    return line[:117] + "..." if len(line) > 120 else line
+
+
+def folder_note(folder: str) -> str:
+    """The line above the adapter's context that says where its files are, and that the
+    paths inside it are relative to that folder."""
+    return (f"This adapter's files are in `{folder}/`. Paths in the instructions below, and in the "
+            f"adapter's skills and roles, are relative to that folder: run a command they give from "
+            f"there (`cd {folder} && ...`).")
+
+
+def other_files_section(bundle: Bundle, folder: str, names: list) -> str:
+    """The context's list of the files no export connects, each with the line its author
+    wrote for a reader, under the folder the adapter is embedded at."""
+    listed = [f"- `{folder}/{name}`" + (f": {summary}" if (summary := _summary(bundle.adapter / name)) else "")
+              for name in names[:LISTED_FILES]]
+    if len(names) > LISTED_FILES:
+        listed.append(f"- and {len(names) - LISTED_FILES} more files under `{folder}/`")
+    return "Other files of this adapter (read one when it is relevant):\n" + "\n".join(listed)
+
+
+def adapter_context(bundle: Bundle, folder: str, context: str, unnamed: list) -> str:
+    """The context this tool writes: where the adapter's files are, then the adapter's own
+    context, then the files no export connects.
+
+    The same three parts, in the same order, are what a `hermit deploy` workspace's context
+    is built from (`hermit/hosts/opencode.py:53`: `folder_note`, the rendered context, then
+    `resources`). The report's `unnamed_files` is read by whoever runs the conversion; this
+    file is what the session itself reads when it starts, so a file named only in the report
+    is a file nothing that acts has been told about.
+    """
+    parts = [folder_note(folder)]
+    if bundle.has_context:
+        parts.append(context.strip())
+    if unnamed:
+        parts.append(other_files_section(bundle, folder, unnamed))
+    return "\n\n".join(parts) + "\n"
 
 
 def subagent_files(root: Path, directory: str) -> list:
@@ -352,11 +412,15 @@ def build(adapter: Path, output: Path, *, allow_lossy: bool = False) -> dict:
     context = bundle.context
     for name, native in roles.items():
         context = context.replace(f"`{name}`", f"`{native}`")
+    # Written only when the adapter has a context, as before; what it carries that no export
+    # connects is named inside it rather than in a file of its own, because the report that
+    # lists them is read by whoever converts, and this file is read by the session.
+    unnamed = unnamed_files(bundle)
 
     config = {"$schema": SCHEMA}
     if bundle.has_context:
         (output / CONTEXT).parent.mkdir(parents=True, exist_ok=True)
-        (output / CONTEXT).write_text(context.strip() + "\n")
+        (output / CONTEXT).write_text(adapter_context(bundle, ADAPTER_DIR, context, unnamed))
         config["instructions"] = [CONTEXT]
     if bundle.tools:
         (output / AUDIT_DIR).mkdir(parents=True, exist_ok=True)
@@ -367,7 +431,6 @@ def build(adapter: Path, output: Path, *, allow_lossy: bool = False) -> dict:
     write_json(output / CONFIG, config)
 
     skills = copy_skills(bundle, output / DIR / "skills")
-    unnamed = unnamed_files(bundle)
     embed_adapter(bundle, output)
     record = {"adapter": bundle.id, "adapter_version": bundle.version, "layout": bundle.layout,
               "converter": f"hermit-opencode {CONVERTER_VERSION}"}

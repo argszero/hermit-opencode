@@ -21,7 +21,9 @@ The adapter itself is copied in with the output, so the emitted configuration is
 self-contained: copy it to another machine and nothing dangles. `convert` puts
 that copy at `adapter/` in its own output directory; [`deploy`](#deploy-into-a-workspace)
 puts it at `.opencode/adapter/` inside your project, where a directory named
-`adapter/` may already be yours.
+`adapter/` may already be yours. Because the copy travels whole, the context file
+is not `ADAPTER.md` verbatim: it says where that copy is, then the adapter's own
+text, then every carried file no export reaches.
 
 ## Why not just `hermit convert`?
 
@@ -69,7 +71,7 @@ Install the wheel attached to the [latest
 release](https://github.com/argszero/hermit-opencode/releases):
 
 ```bash
-pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.6/hermit_opencode-0.2.6-py3-none-any.whl
+pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.7/hermit_opencode-0.2.7-py3-none-any.whl
 ```
 
 This is the path to prefer: one HTTP download, no `git` binary, no git endpoint
@@ -151,25 +153,53 @@ It prints a JSON report (`adapter_id`, `layout`, `context`, `skills`, `roles`,
 out/
   opencode.json          the configuration
   hermit-opencode.json   which adapter, which layout, which converter
-  .opencode/context.md   the adapter's context            (only if it has one)
+  .opencode/context.md   the copy's folder, the adapter's context,
+                         and the files nothing connects   (only if it has a context)
   .opencode/skills/      one directory per skill          (only if it declares skills)
   .opencode/agents/      one file per subagent            (only if it declares roles)
   adapter/               the whole adapter, embedded
 ```
 
-**The embedded copy is listed by name.** Since hermit `42fbd08`, a plugin for any of
-the four targets names the adapter's folder and the files no export connects —
-Claude Code through a `SessionStart` hook, the other three under `unnamed_files`.
-This tool emits no such hook, and reports the same list under the same name:
-`unnamed_files` in the JSON report. What counts as connected is what the
-configuration actually reaches — the context, the skill directories, the role
-files, each tool's entrypoint, and the manifest `hermit serve` reads. Everything
-else in `adapter/` (`EVOLVER.md`, `README.md`, a data directory) is carried into
-your project and named by no part of it, so a session finds it only if something
-tells it to look. Hooks are the one part named for a different reason: refused
+**The embedded copy is named, in the file the session reads.** Since hermit
+`42fbd08`, a plugin for any of the four targets names the adapter's folder and the
+files no export connects — Claude Code through a `SessionStart` hook, the other
+three under `unnamed_files`. This tool emits no such hook and does the other half:
+`.opencode/context.md` opens with where the copy is (`adapter/`, or
+`.opencode/adapter/` under `deploy`), then the adapter's own `ADAPTER.md`, then
+every carried file no export reaches, each with the line its own author wrote for
+a reader. Converted from hermit's example adapter, that file reads like this —
+the folder note is one long line in the file, wrapped here to fit the page:
+
+```text
+This adapter's files are in `adapter/`. Paths in the instructions below, and in the
+adapter's skills and roles, are relative to that folder: run a command they give
+from there (`cd adapter && ...`).
+
+Review the task requirements before acting. Check the result before returning it.
+
+Other files of this adapter (read one when it is relevant):
+- `adapter/.hermit/EVOLVER.md`: Editable files
+- `adapter/README.md`: File interface example
+```
+
+Those three parts, in that order, are what hermit's own deployment builds for a
+workspace (`hermit/hosts/opencode.py`, from `hermit.hosts.inputs` `folder_note`,
+the rendered context and `resources`). The same list is the report's
+`unnamed_files`, under hermit's name, for whoever runs the conversion. What counts
+as connected is what the configuration actually reaches — the context, the skill
+directories, the role files, each tool's entrypoint, and the manifest `hermit
+serve` reads. Everything else in `adapter/` (`EVOLVER.md`, `README.md`, a data
+directory) is carried into your project and reached by nothing, which is why the
+context names it: a file named only in the report is a file nothing that acts has
+been told about. Hooks are the one part named for a different reason: refused
 unless you pass `--allow-lossy`, and then listed under `omitted` — the same
 refusal hermit's own `refuse()` applies to all four targets
 (`hermit/plugins/common.py:89`, "no plugin carries an adapter's hooks yet").
+
+An adapter with no `ADAPTER.md` gets no `instructions` entry and no context file,
+and so names nothing this way: its `unnamed_files` are then reported and not
+named. The list also stops at 60 files and counts the rest, so a large adapter's
+context stays readable.
 
 Then:
 
@@ -235,7 +265,9 @@ It writes the same four parts — `.opencode/context.md` and its `instructions`
 entry, `.opencode/skills/`, `.opencode/agents/`, and `opencode.json`'s `mcp`
 entry — plus `.opencode/adapter/` (its copy of the adapter) and
 `.opencode/hermit-opencode.json` (its record, and the marker that makes the
-workspace its own). Then `cd` there and run `opencode`.
+workspace its own). The context is composed the same way, with one difference
+that matters: its folder note says `.opencode/adapter/`, because that is where
+this command put the copy. Then `cd` there and run `opencode`.
 
 **It merges `opencode.json`; it never replaces it.** Your other keys, your own
 `instructions` entries and your other MCP servers stay, and its own entry is
@@ -290,7 +322,7 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[test]"
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-**1. The suite: 28 passed, no network, no hermit installed.**
+**1. The suite: 31 passed, no network, no hermit installed.**
 
 ```text
 tests/test_deploy.py::test_deploy_writes_the_four_parts_in_place PASSED
@@ -305,6 +337,7 @@ tests/test_deploy.py::test_deploy_refuses_a_workspace_inside_the_adapter PASSED
 tests/test_deploy.py::test_cli_deploys_and_the_old_positional_spelling_still_converts PASSED
 tests/test_deploy.py::test_cli_reports_a_refused_workspace_with_exit_2 PASSED
 tests/test_deploy.py::test_the_deployed_config_validates_against_the_opencode_schema PASSED
+tests/test_deploy.py::test_the_deployed_context_names_its_own_copy PASSED
 tests/test_emit.py::test_opencode_carries_every_part PASSED
 tests/test_emit.py::test_opencode_without_context_writes_no_instructions PASSED
 tests/test_emit.py::test_opencode_keeps_the_audit_log_of_an_earlier_conversion PASSED
@@ -315,6 +348,8 @@ tests/test_emit.py::test_refuses_hooks_but_can_leave_them_out PASSED
 tests/test_emit.py::test_refuses_an_adapter_that_is_not_plugin_portable PASSED
 tests/test_emit.py::test_names_the_files_no_export_connects PASSED
 tests/test_emit.py::test_unnamed_files_leaves_out_what_is_not_carried_or_is_the_harnesss PASSED
+tests/test_emit.py::test_the_context_names_the_files_no_export_connects PASSED
+tests/test_emit.py::test_the_context_lists_sixty_files_and_counts_the_rest PASSED
 tests/test_emit.py::test_cli_emits_and_exits_zero PASSED
 tests/test_emit.py::test_cli_reports_a_bad_adapter_with_exit_2 PASSED
 tests/test_emit.py::test_emitted_config_validates_against_the_opencode_schema PASSED
@@ -330,7 +365,10 @@ and fifth cover the second manifest layout, which that request never had to. The
 two `unnamed_files` cases cover what hermit added in `42fbd08`: the first asserts
 the list against the emission's own output rather than against a written-down
 expectation, and the second that each of the three reasons a file stays out of
-the list holds.
+the list holds. The two after them are the other half of that parity — the list
+reaches the session, as the context's third part, and stops at sixty files with a
+count of the rest — and the `deploy` case repeats the first of them against the
+folder note a workspace needs (`.opencode/adapter/`).
 
 `python -c "import hermit"` in that venv raises `ModuleNotFoundError`. That is
 the zero-dependency claim, measured rather than asserted — but run it from this
@@ -439,17 +477,22 @@ recommendation rests on.
 **6. The install command at the top of this page, from a clean virtualenv — both
 commands.** 0.2.2 through 0.2.5 changed documentation only, so the runtime readings
 below were taken on 0.2.1 and re-taken on each later release with the same result;
-the version here is the one you get from the URL at the top. 0.2.6 is the first
-release since to change the code: it adds one field to the `convert` report, and
-the tree it writes does not move — converting this same adapter with the 0.2.5
-wheel and with 0.2.6 gives byte-identical output, apart from the `converter`
-string in `hermit-opencode.json` — so the readings that depend on the emitted
-configuration stand as taken.
+the version here is the one you get from the URL at the top. Two releases since
+have changed the code. 0.2.6 added one field to the `convert` report and moved no
+file. 0.2.7 changes exactly one file and nothing else — `.opencode/context.md`,
+which is now composed from three parts instead of being the adapter's text
+verbatim: converting this same adapter with the 0.2.6 wheel and with 0.2.7 gives
+byte-identical output apart from that file and the `converter` string in
+`hermit-opencode.json` (`diff -r` over the two output directories, recorded in the
+release notes). So every reading below that exercises the configuration, the
+server, the schema or the subagent discovery stands as taken, and the context file
+itself is what item 1's `test_the_context_names_the_files_no_export_connects`
+covers.
 
 ```text
-$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.6/hermit_opencode-0.2.6-py3-none-any.whl
+$ pip install https://github.com/argszero/hermit-opencode/releases/download/0.2.7/hermit_opencode-0.2.7-py3-none-any.whl
 Installing collected packages: PyYAML, hermit-opencode
-Successfully installed PyYAML-6.0.4 hermit-opencode-0.2.6
+Successfully installed PyYAML-6.0.4 hermit-opencode-0.2.7
 $ hermit-opencode convert docs/_examples/file_adapter --output out/
   ...
   "omitted": [],
@@ -481,7 +524,8 @@ anywhere in it. `deploy` was then measured through the same three steps.
 **7. `deploy`, into a workspace that already had its own files.**
 
 A project holding `main.py` and its own `AGENTS.md` was adopted with `--force`, by
-the 0.2.6 build under test:
+the 0.2.6 build under test — 0.2.7 changes only `.opencode/context.md` of what this
+item reads, not the server command, the workspace layout or the audit log:
 
 ```text
 $ hermit-opencode deploy tests/assets/file_adapter --workspace gate-ws --force
