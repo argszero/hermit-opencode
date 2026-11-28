@@ -720,7 +720,48 @@ what `hermit deploy --help` prints under `--host` and what `hermit convert
 first written — `dsh` in #90, `hermes` in #107 — and it includes `opencode`; the
 convert list has not moved. That asymmetry is why this package exists, and asking
 the command is how a reader checks it instead of trusting a count measured once.
-`--target` was re-read at `02f57f3` on 2026-11-18 and still lists those four.
+`--target` was re-read at `02f57f3` on 2026-11-18 and again at `899597b` — where
+`main` stood on 2026-11-28 — and still lists those four; `git grep -c opencode
+hermit/plugins/` matches nothing at either commit.
+
+*What the roadmap still tracks.* #35 is closed, but hermit's roadmap issue
+[#37](https://github.com/Infini-AI-Lab/hermit/issues/37) is open, and the two
+sections that name this work, read 2026-11-28, are:
+
+> **3. More Agent Integrations**
+>
+> Expand the agents supported by Hermit, starting with OpenCode.
+>
+> - [ ] Add OpenCode integration for running tasks with harness adapters.
+> - [ ] Support deploying trained adapters to OpenCode.
+> - [ ] Provide an end-to-end OpenCode example covering training, evaluation,
+>   and deployment.
+>
+> **5. Deployment That Matches Training** — Make a deployed or converted adapter
+> give the agent what it had during training.
+> - [ ] Define what `hermit deploy` and `hermit convert` carry. Today they
+>   translate only what `exports.yaml` declares (context, tools, roles, skills),
+>   so a file the agent used during training but the adapter did not declare is
+>   left out without notice.
+> - [ ] Report every adapter file a deployment or conversion leaves out, as
+>   `convert` does under `omitted`.
+
+Every box quoted above is unchecked. Read against what this page's two commands
+actually do, they come out like this:
+
+| roadmap item | this package |
+|---|---|
+| §3, running tasks with harness adapters | the half hermit lacks: with no OpenCode `convert` target, a configuration OpenCode loads is what this tool writes |
+| §3, deploying trained adapters | `deploy` writes the workspace; upstream's own `deploy --host opencode` writes a different `mcp` shape, in the table below |
+| §3, an end-to-end OpenCode example | **not answered**, neither here nor there: this page's verification is two workspaces compared with `opencode agent list`, not a training run |
+| §5, a file "left out without notice" | answered for the adapters this tool carries: both `convert` and `deploy` name the carried files no export connects, in the context the session reads |
+| §5, "report every file left out, as `convert` does under `omitted`" | half: `convert` reports both `unnamed_files` and `omitted`; `deploy` names the same files in the context, but its report carries `omitted` (`hooks`) alone |
+| §5, undeclared files at the paths the agent saw | not answered: what this tool carries lands under `adapter/`, one directory below where the agent saw it (`.opencode/adapter/` under `deploy`) |
+| §5, what reaches the agent under each host, with a test | written here for OpenCode alone, and the test is this package's own suite |
+
+Two of those rows are the honest gaps rather than a promise: nothing here puts an
+undeclared file back at its training-time path, and `deploy`'s report does not
+carry the list its context names. Both are one file's work, and neither is done.
 
 *What `deploy` still does differently.* One `lean_swarm` adapter into two empty
 workspaces, upstream's `hermit deploy --host opencode` on one side and this
